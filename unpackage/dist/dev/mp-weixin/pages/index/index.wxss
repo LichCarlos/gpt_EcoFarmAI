@@ -1,0 +1,174 @@
+/**
+ * 这里是uni-app内置的常用样式变量
+ *
+ * uni-app 官方扩展插件及插件市场（https://ext.dcloud.net.cn）上很多三方插件均使用了这些样式变量
+ * 如果你是插件开发者，建议你使用scss预处理，并在插件代码中直接使用这些变量（无需 import 这个文件），方便用户通过搭积木的方式开发整体风格一致的App
+ *
+ */
+/**
+ * 如果你是App开发者（插件使用者），你可以通过修改这些变量来定制自己的插件主题，实现自定义主题功能
+ *
+ * 如果你的项目同样使用了scss预处理，你也可以直接在你的 scss 代码中使用如下变量，同时无需 import 这个文件
+ */
+/* 颜色变量 */
+/* 行为相关颜色 */
+/* 文字基本颜色 */
+/* 背景颜色 */
+/* 边框颜色 */
+/* 尺寸变量 */
+/* 文字尺寸 */
+/* 图片尺寸 */
+/* Border Radius */
+/* 水平间距 */
+/* 垂直间距 */
+/* 透明度 */
+/* 文章场景相关 */
+@keyframes spin {
+0% {
+    transform: rotate(0deg);
+}
+100% {
+    transform: rotate(360deg);
+}
+}
+@keyframes fadeInFromTop {
+0% {
+    opacity: 0;
+    transform: translateY(30px);
+}
+100% {
+    opacity: 1;
+    transform: translateY(0);
+}
+}
+page {
+  background-color: #E5EFE4;
+}
+.nav_bar_custom {
+  height: var(--051b65ec);
+  position: fixed;
+  top: 0px;
+  left: 0px;
+  right: 0px;
+  background: linear-gradient(to bottom, #78CC68, #C8F5C8);
+  z-index: 999;
+}
+.nav_bar_custom .top_height {
+  height: var(--aa7ce072);
+}
+.nav_bar_custom .nav_content {
+  padding-left: 24rpx;
+  display: flex;
+  align-ietms: center;
+}
+.nav_bar_custom .nav_content .img {
+  height: var(--041c5516);
+}
+.nav_bar_custom .nav_content .nav_text {
+  padding-left: 24rpx;
+  display: flex;
+  flex-direction: column;
+}
+.nav_bar_custom .nav_content .nav_text .text_1 {
+  fonet-size: 28rpx;
+  font-weight: bold;
+}
+.nav_bar_custom .nav_content .nav_text .text_2 {
+  font-size: 22rpx;
+  color: #ffb400;
+}
+.Sent_information {
+  padding: 10rpx;
+  margin: 20rpx;
+  line-height: 1.5;
+  border-radius: 10rpx;
+  font-size: 30rpx;
+}
+.backdrop {
+  border-radius: 10rpx;
+  background-color: #DFECDB;
+}
+.your_element {
+  animation-name: fadeInFromTop;
+  animation-duration: 0.7s;
+  animation-timing-function: ease-in;
+  animation-fill-mode: forwards;
+}
+.widthAuto {
+  width: auto;
+}
+.nav_content .img {
+  height: 48rpx;
+  display: block;
+  margin-right: 10rpx;
+}
+.nav_content .text {
+  font-size: 36rpx;
+  font-weight: bold;
+}
+.Default_problem {
+  border: 1rpx solid #AAC8AC;
+  border-radius: 40rpx;
+  padding: 15rpx 0;
+  text-align: center;
+  margin: 20rpx 0;
+  color: #AAC8AC;
+  font-weight: bold;
+}
+.user_backdrop {
+  color: #AAC8AC;
+  display: flex;
+  margin: 20rpx;
+}
+.user_backdrop .img {
+  height: 48rpx;
+}
+.loading {
+  display: flex;
+  align-items: center;
+}
+.loading .loader {
+  border: 5rpx solid #f3f3f3;
+  border-top: 5rpx solid #DEECDB;
+  border-radius: 50%;
+  width: 40rpx;
+  height: 40rpx;
+  animation: spin 1s linear infinite;
+  margin-right: 10rpx;
+}
+.ai_content {
+  display: flex;
+  flex-direction: column;
+}
+.ai_content .text {
+  border-bottom: 1px solid #f3f3f34;
+  padding-bottom: 10rpx;
+}
+.ai_content .img {
+  height: 36rpx;
+  width: 30rpx;
+  align-self: flex-end;
+}
+.Input_field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  border-top: 1px soloid #eeeeee;
+  padding: 10rpx 10rpx 30rpx 10rpx;
+  background-color: #DEECDB;
+}
+.Input_field .img {
+  width: 48rpx;
+  height: 48rpx;
+  display: block;
+}
+.Input_field .input {
+  width: 100%;
+  background-color: #E8F4E8;
+  border-radius: 30rpx;
+  padding: 20rpx;
+}
