@@ -88,10 +88,6 @@ const looseToNumber = (val) => {
   const n = parseFloat(val);
   return isNaN(n) ? val : n;
 };
-let _globalThis;
-const getGlobalThis = () => {
-  return _globalThis || (_globalThis = typeof globalThis !== "undefined" ? globalThis : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : typeof global !== "undefined" ? global : {});
-};
 function normalizeStyle(value) {
   if (isArray(value)) {
     const res = {};
@@ -153,6 +149,50 @@ const stringifySymbol = (v, i = "") => {
   var _a;
   return isSymbol(v) ? `Symbol(${(_a = v.description) != null ? _a : i})` : v;
 };
+const LOCALE_ZH_HANS = "zh-Hans";
+const LOCALE_ZH_HANT = "zh-Hant";
+const LOCALE_EN = "en";
+const LOCALE_FR = "fr";
+const LOCALE_ES = "es";
+function include(str, parts) {
+  return !!parts.find((part) => str.indexOf(part) !== -1);
+}
+function startsWith(str, parts) {
+  return parts.find((part) => str.indexOf(part) === 0);
+}
+function normalizeLocale(locale, messages) {
+  if (!locale) {
+    return;
+  }
+  locale = locale.trim().replace(/_/g, "-");
+  if (messages && messages[locale]) {
+    return locale;
+  }
+  locale = locale.toLowerCase();
+  if (locale === "chinese") {
+    return LOCALE_ZH_HANS;
+  }
+  if (locale.indexOf("zh") === 0) {
+    if (locale.indexOf("-hans") > -1) {
+      return LOCALE_ZH_HANS;
+    }
+    if (locale.indexOf("-hant") > -1) {
+      return LOCALE_ZH_HANT;
+    }
+    if (include(locale, ["-tw", "-hk", "-mo", "-cht"])) {
+      return LOCALE_ZH_HANT;
+    }
+    return LOCALE_ZH_HANS;
+  }
+  let locales = [LOCALE_EN, LOCALE_FR, LOCALE_ES];
+  if (messages && Object.keys(messages).length > 0) {
+    locales = Object.keys(messages);
+  }
+  const lang = startsWith(locale, locales);
+  if (lang) {
+    return lang;
+  }
+}
 const SLOT_DEFAULT_NAME = "d";
 const ON_SHOW = "onShow";
 const ON_HIDE = "onHide";
@@ -174,6 +214,7 @@ const ON_TAB_ITEM_TAP = "onTabItemTap";
 const ON_REACH_BOTTOM = "onReachBottom";
 const ON_PULL_DOWN_REFRESH = "onPullDownRefresh";
 const ON_SHARE_TIMELINE = "onShareTimeline";
+const ON_SHARE_CHAT = "onShareChat";
 const ON_ADD_TO_FAVORITES = "onAddToFavorites";
 const ON_SHARE_APP_MESSAGE = "onShareAppMessage";
 const ON_NAVIGATION_BAR_BUTTON_TAP = "onNavigationBarButtonTap";
@@ -181,10 +222,10 @@ const ON_NAVIGATION_BAR_SEARCH_INPUT_CLICKED = "onNavigationBarSearchInputClicke
 const ON_NAVIGATION_BAR_SEARCH_INPUT_CHANGED = "onNavigationBarSearchInputChanged";
 const ON_NAVIGATION_BAR_SEARCH_INPUT_CONFIRMED = "onNavigationBarSearchInputConfirmed";
 const ON_NAVIGATION_BAR_SEARCH_INPUT_FOCUS_CHANGED = "onNavigationBarSearchInputFocusChanged";
-const customizeRE = /:/g;
-function customizeEvent(str) {
-  return camelize(str.replace(customizeRE, "-"));
-}
+const VIRTUAL_HOST_STYLE = "virtualHostStyle";
+const VIRTUAL_HOST_CLASS = "virtualHostClass";
+const VIRTUAL_HOST_HIDDEN = "virtualHostHidden";
+const VIRTUAL_HOST_ID = "virtualHostId";
 function hasLeadingSlash(str) {
   return str.indexOf("/") === 0;
 }
@@ -233,6 +274,10 @@ function sortObject(obj) {
   }
   return !Object.keys(sortObj) ? obj : sortObj;
 }
+const customizeRE = /:/g;
+function customizeEvent(str) {
+  return camelize(str.replace(customizeRE, "-"));
+}
 const encode = encodeURIComponent;
 function stringifyQuery(obj, encodeStr = encode) {
   const res = obj ? Object.keys(obj).map((key) => {
@@ -259,6 +304,7 @@ const PAGE_HOOKS = [
   ON_PULL_DOWN_REFRESH,
   ON_SHARE_TIMELINE,
   ON_SHARE_APP_MESSAGE,
+  ON_SHARE_CHAT,
   ON_ADD_TO_FAVORITES,
   ON_SAVE_EXIT_STATE,
   ON_NAVIGATION_BAR_BUTTON_TAP,
@@ -292,6 +338,7 @@ const UniLifecycleHooks = [
   ON_SHARE_TIMELINE,
   ON_ADD_TO_FAVORITES,
   ON_SHARE_APP_MESSAGE,
+  ON_SHARE_CHAT,
   ON_SAVE_EXIT_STATE,
   ON_NAVIGATION_BAR_BUTTON_TAP,
   ON_NAVIGATION_BAR_SEARCH_INPUT_CLICKED,
@@ -330,20 +377,20 @@ function invokeCreateVueAppHook(app) {
   createVueAppHooks.forEach((hook) => hook(app));
 }
 const invokeCreateErrorHandler = once((app, createErrorHandler2) => {
-  if (isFunction(app._component.onError)) {
-    return createErrorHandler2(app);
-  }
+  return createErrorHandler2(app);
 });
 const E = function() {
 };
 E.prototype = {
+  _id: 1,
   on: function(name, callback, ctx) {
     var e2 = this.e || (this.e = {});
     (e2[name] || (e2[name] = [])).push({
       fn: callback,
-      ctx
+      ctx,
+      _id: this._id
     });
-    return this;
+    return this._id++;
   },
   once: function(name, callback, ctx) {
     var self2 = this;
@@ -364,13 +411,13 @@ E.prototype = {
     }
     return this;
   },
-  off: function(name, callback) {
+  off: function(name, event) {
     var e2 = this.e || (this.e = {});
     var evts = e2[name];
     var liveEvents = [];
-    if (evts && callback) {
+    if (evts && event) {
       for (var i = evts.length - 1; i >= 0; i--) {
-        if (evts[i].fn === callback || evts[i].fn._ === callback) {
+        if (evts[i].fn === event || evts[i].fn._ === event || evts[i]._id === event) {
           evts.splice(i, 1);
           break;
         }
@@ -382,1706 +429,6 @@ E.prototype = {
   }
 };
 var E$1 = E;
-const LOCALE_ZH_HANS = "zh-Hans";
-const LOCALE_ZH_HANT = "zh-Hant";
-const LOCALE_EN = "en";
-const LOCALE_FR = "fr";
-const LOCALE_ES = "es";
-function include(str, parts) {
-  return !!parts.find((part) => str.indexOf(part) !== -1);
-}
-function startsWith(str, parts) {
-  return parts.find((part) => str.indexOf(part) === 0);
-}
-function normalizeLocale(locale, messages) {
-  if (!locale) {
-    return;
-  }
-  locale = locale.trim().replace(/_/g, "-");
-  if (messages && messages[locale]) {
-    return locale;
-  }
-  locale = locale.toLowerCase();
-  if (locale === "chinese") {
-    return LOCALE_ZH_HANS;
-  }
-  if (locale.indexOf("zh") === 0) {
-    if (locale.indexOf("-hans") > -1) {
-      return LOCALE_ZH_HANS;
-    }
-    if (locale.indexOf("-hant") > -1) {
-      return LOCALE_ZH_HANT;
-    }
-    if (include(locale, ["-tw", "-hk", "-mo", "-cht"])) {
-      return LOCALE_ZH_HANT;
-    }
-    return LOCALE_ZH_HANS;
-  }
-  let locales = [LOCALE_EN, LOCALE_FR, LOCALE_ES];
-  if (messages && Object.keys(messages).length > 0) {
-    locales = Object.keys(messages);
-  }
-  const lang = startsWith(locale, locales);
-  if (lang) {
-    return lang;
-  }
-}
-function getBaseSystemInfo() {
-  return wx.getSystemInfoSync();
-}
-function validateProtocolFail(name, msg) {
-  console.warn(`${name}: ${msg}`);
-}
-function validateProtocol(name, data, protocol, onFail) {
-  if (!onFail) {
-    onFail = validateProtocolFail;
-  }
-  for (const key in protocol) {
-    const errMsg = validateProp$1(key, data[key], protocol[key], !hasOwn(data, key));
-    if (isString(errMsg)) {
-      onFail(name, errMsg);
-    }
-  }
-}
-function validateProtocols(name, args, protocol, onFail) {
-  if (!protocol) {
-    return;
-  }
-  if (!isArray(protocol)) {
-    return validateProtocol(name, args[0] || /* @__PURE__ */ Object.create(null), protocol, onFail);
-  }
-  const len = protocol.length;
-  const argsLen = args.length;
-  for (let i = 0; i < len; i++) {
-    const opts = protocol[i];
-    const data = /* @__PURE__ */ Object.create(null);
-    if (argsLen > i) {
-      data[opts.name] = args[i];
-    }
-    validateProtocol(name, data, { [opts.name]: opts }, onFail);
-  }
-}
-function validateProp$1(name, value, prop, isAbsent) {
-  if (!isPlainObject(prop)) {
-    prop = { type: prop };
-  }
-  const { type, required, validator } = prop;
-  if (required && isAbsent) {
-    return 'Missing required args: "' + name + '"';
-  }
-  if (value == null && !required) {
-    return;
-  }
-  if (type != null) {
-    let isValid = false;
-    const types = isArray(type) ? type : [type];
-    const expectedTypes = [];
-    for (let i = 0; i < types.length && !isValid; i++) {
-      const { valid, expectedType } = assertType$1(value, types[i]);
-      expectedTypes.push(expectedType || "");
-      isValid = valid;
-    }
-    if (!isValid) {
-      return getInvalidTypeMessage$1(name, value, expectedTypes);
-    }
-  }
-  if (validator) {
-    return validator(value);
-  }
-}
-const isSimpleType$1 = /* @__PURE__ */ makeMap("String,Number,Boolean,Function,Symbol");
-function assertType$1(value, type) {
-  let valid;
-  const expectedType = getType$1(type);
-  if (isSimpleType$1(expectedType)) {
-    const t2 = typeof value;
-    valid = t2 === expectedType.toLowerCase();
-    if (!valid && t2 === "object") {
-      valid = value instanceof type;
-    }
-  } else if (expectedType === "Object") {
-    valid = isObject(value);
-  } else if (expectedType === "Array") {
-    valid = isArray(value);
-  } else {
-    {
-      valid = value instanceof type;
-    }
-  }
-  return {
-    valid,
-    expectedType
-  };
-}
-function getInvalidTypeMessage$1(name, value, expectedTypes) {
-  let message = `Invalid args: type check failed for args "${name}". Expected ${expectedTypes.map(capitalize).join(", ")}`;
-  const expectedType = expectedTypes[0];
-  const receivedType = toRawType(value);
-  const expectedValue = styleValue$1(value, expectedType);
-  const receivedValue = styleValue$1(value, receivedType);
-  if (expectedTypes.length === 1 && isExplicable$1(expectedType) && !isBoolean$1(expectedType, receivedType)) {
-    message += ` with value ${expectedValue}`;
-  }
-  message += `, got ${receivedType} `;
-  if (isExplicable$1(receivedType)) {
-    message += `with value ${receivedValue}.`;
-  }
-  return message;
-}
-function getType$1(ctor) {
-  const match = ctor && ctor.toString().match(/^\s*function (\w+)/);
-  return match ? match[1] : "";
-}
-function styleValue$1(value, type) {
-  if (type === "String") {
-    return `"${value}"`;
-  } else if (type === "Number") {
-    return `${Number(value)}`;
-  } else {
-    return `${value}`;
-  }
-}
-function isExplicable$1(type) {
-  const explicitTypes = ["string", "number", "boolean"];
-  return explicitTypes.some((elem) => type.toLowerCase() === elem);
-}
-function isBoolean$1(...args) {
-  return args.some((elem) => elem.toLowerCase() === "boolean");
-}
-function tryCatch(fn) {
-  return function() {
-    try {
-      return fn.apply(fn, arguments);
-    } catch (e2) {
-      console.error(e2);
-    }
-  };
-}
-let invokeCallbackId = 1;
-const invokeCallbacks = {};
-function addInvokeCallback(id, name, callback, keepAlive = false) {
-  invokeCallbacks[id] = {
-    name,
-    keepAlive,
-    callback
-  };
-  return id;
-}
-function invokeCallback(id, res, extras) {
-  if (typeof id === "number") {
-    const opts = invokeCallbacks[id];
-    if (opts) {
-      if (!opts.keepAlive) {
-        delete invokeCallbacks[id];
-      }
-      return opts.callback(res, extras);
-    }
-  }
-  return res;
-}
-const API_SUCCESS = "success";
-const API_FAIL = "fail";
-const API_COMPLETE = "complete";
-function getApiCallbacks(args) {
-  const apiCallbacks = {};
-  for (const name in args) {
-    const fn = args[name];
-    if (isFunction(fn)) {
-      apiCallbacks[name] = tryCatch(fn);
-      delete args[name];
-    }
-  }
-  return apiCallbacks;
-}
-function normalizeErrMsg(errMsg, name) {
-  if (!errMsg || errMsg.indexOf(":fail") === -1) {
-    return name + ":ok";
-  }
-  return name + errMsg.substring(errMsg.indexOf(":fail"));
-}
-function createAsyncApiCallback(name, args = {}, { beforeAll, beforeSuccess } = {}) {
-  if (!isPlainObject(args)) {
-    args = {};
-  }
-  const { success, fail, complete } = getApiCallbacks(args);
-  const hasSuccess = isFunction(success);
-  const hasFail = isFunction(fail);
-  const hasComplete = isFunction(complete);
-  const callbackId = invokeCallbackId++;
-  addInvokeCallback(callbackId, name, (res) => {
-    res = res || {};
-    res.errMsg = normalizeErrMsg(res.errMsg, name);
-    isFunction(beforeAll) && beforeAll(res);
-    if (res.errMsg === name + ":ok") {
-      isFunction(beforeSuccess) && beforeSuccess(res, args);
-      hasSuccess && success(res);
-    } else {
-      hasFail && fail(res);
-    }
-    hasComplete && complete(res);
-  });
-  return callbackId;
-}
-const HOOK_SUCCESS = "success";
-const HOOK_FAIL = "fail";
-const HOOK_COMPLETE = "complete";
-const globalInterceptors = {};
-const scopedInterceptors = {};
-function wrapperHook(hook, params) {
-  return function(data) {
-    return hook(data, params) || data;
-  };
-}
-function queue$2(hooks, data, params) {
-  let promise = false;
-  for (let i = 0; i < hooks.length; i++) {
-    const hook = hooks[i];
-    if (promise) {
-      promise = Promise.resolve(wrapperHook(hook, params));
-    } else {
-      const res = hook(data, params);
-      if (isPromise(res)) {
-        promise = Promise.resolve(res);
-      }
-      if (res === false) {
-        return {
-          then() {
-          },
-          catch() {
-          }
-        };
-      }
-    }
-  }
-  return promise || {
-    then(callback) {
-      return callback(data);
-    },
-    catch() {
-    }
-  };
-}
-function wrapperOptions(interceptors2, options = {}) {
-  [HOOK_SUCCESS, HOOK_FAIL, HOOK_COMPLETE].forEach((name) => {
-    const hooks = interceptors2[name];
-    if (!isArray(hooks)) {
-      return;
-    }
-    const oldCallback = options[name];
-    options[name] = function callbackInterceptor(res) {
-      queue$2(hooks, res, options).then((res2) => {
-        return isFunction(oldCallback) && oldCallback(res2) || res2;
-      });
-    };
-  });
-  return options;
-}
-function wrapperReturnValue(method, returnValue) {
-  const returnValueHooks = [];
-  if (isArray(globalInterceptors.returnValue)) {
-    returnValueHooks.push(...globalInterceptors.returnValue);
-  }
-  const interceptor = scopedInterceptors[method];
-  if (interceptor && isArray(interceptor.returnValue)) {
-    returnValueHooks.push(...interceptor.returnValue);
-  }
-  returnValueHooks.forEach((hook) => {
-    returnValue = hook(returnValue) || returnValue;
-  });
-  return returnValue;
-}
-function getApiInterceptorHooks(method) {
-  const interceptor = /* @__PURE__ */ Object.create(null);
-  Object.keys(globalInterceptors).forEach((hook) => {
-    if (hook !== "returnValue") {
-      interceptor[hook] = globalInterceptors[hook].slice();
-    }
-  });
-  const scopedInterceptor = scopedInterceptors[method];
-  if (scopedInterceptor) {
-    Object.keys(scopedInterceptor).forEach((hook) => {
-      if (hook !== "returnValue") {
-        interceptor[hook] = (interceptor[hook] || []).concat(scopedInterceptor[hook]);
-      }
-    });
-  }
-  return interceptor;
-}
-function invokeApi(method, api, options, params) {
-  const interceptor = getApiInterceptorHooks(method);
-  if (interceptor && Object.keys(interceptor).length) {
-    if (isArray(interceptor.invoke)) {
-      const res = queue$2(interceptor.invoke, options);
-      return res.then((options2) => {
-        return api(wrapperOptions(getApiInterceptorHooks(method), options2), ...params);
-      });
-    } else {
-      return api(wrapperOptions(interceptor, options), ...params);
-    }
-  }
-  return api(options, ...params);
-}
-function hasCallback(args) {
-  if (isPlainObject(args) && [API_SUCCESS, API_FAIL, API_COMPLETE].find((cb) => isFunction(args[cb]))) {
-    return true;
-  }
-  return false;
-}
-function handlePromise(promise) {
-  return promise;
-}
-function promisify$1(name, fn) {
-  return (args = {}, ...rest) => {
-    if (hasCallback(args)) {
-      return wrapperReturnValue(name, invokeApi(name, fn, args, rest));
-    }
-    return wrapperReturnValue(name, handlePromise(new Promise((resolve, reject) => {
-      invokeApi(name, fn, extend(args, { success: resolve, fail: reject }), rest);
-    })));
-  };
-}
-function formatApiArgs(args, options) {
-  const params = args[0];
-  if (!options || !options.formatArgs || !isPlainObject(options.formatArgs) && isPlainObject(params)) {
-    return;
-  }
-  const formatArgs = options.formatArgs;
-  const keys = Object.keys(formatArgs);
-  for (let i = 0; i < keys.length; i++) {
-    const name = keys[i];
-    const formatterOrDefaultValue = formatArgs[name];
-    if (isFunction(formatterOrDefaultValue)) {
-      const errMsg = formatterOrDefaultValue(args[0][name], params);
-      if (isString(errMsg)) {
-        return errMsg;
-      }
-    } else {
-      if (!hasOwn(params, name)) {
-        params[name] = formatterOrDefaultValue;
-      }
-    }
-  }
-}
-function invokeSuccess(id, name, res) {
-  const result = {
-    errMsg: name + ":ok"
-  };
-  return invokeCallback(id, extend(res || {}, result));
-}
-function invokeFail(id, name, errMsg, errRes = {}) {
-  const apiErrMsg = name + ":fail" + (errMsg ? " " + errMsg : "");
-  delete errRes.errCode;
-  let res = extend({ errMsg: apiErrMsg }, errRes);
-  return invokeCallback(id, res);
-}
-function beforeInvokeApi(name, args, protocol, options) {
-  {
-    validateProtocols(name, args, protocol);
-  }
-  if (options && options.beforeInvoke) {
-    const errMsg2 = options.beforeInvoke(args);
-    if (isString(errMsg2)) {
-      return errMsg2;
-    }
-  }
-  const errMsg = formatApiArgs(args, options);
-  if (errMsg) {
-    return errMsg;
-  }
-}
-function parseErrMsg(errMsg) {
-  if (!errMsg || isString(errMsg)) {
-    return errMsg;
-  }
-  if (errMsg.stack) {
-    console.error(errMsg.message + "\n" + errMsg.stack);
-    return errMsg.message;
-  }
-  return errMsg;
-}
-function wrapperTaskApi(name, fn, protocol, options) {
-  return (args) => {
-    const id = createAsyncApiCallback(name, args, options);
-    const errMsg = beforeInvokeApi(name, [args], protocol, options);
-    if (errMsg) {
-      return invokeFail(id, name, errMsg);
-    }
-    return fn(args, {
-      resolve: (res) => invokeSuccess(id, name, res),
-      reject: (errMsg2, errRes) => invokeFail(id, name, parseErrMsg(errMsg2), errRes)
-    });
-  };
-}
-function wrapperSyncApi(name, fn, protocol, options) {
-  return (...args) => {
-    const errMsg = beforeInvokeApi(name, args, protocol, options);
-    if (errMsg) {
-      throw new Error(errMsg);
-    }
-    return fn.apply(null, args);
-  };
-}
-function wrapperAsyncApi(name, fn, protocol, options) {
-  return wrapperTaskApi(name, fn, protocol, options);
-}
-function defineSyncApi(name, fn, protocol, options) {
-  return wrapperSyncApi(name, fn, protocol, options);
-}
-function defineAsyncApi(name, fn, protocol, options) {
-  return promisify$1(name, wrapperAsyncApi(name, fn, protocol, options));
-}
-const API_UPX2PX = "upx2px";
-const Upx2pxProtocol = [
-  {
-    name: "upx",
-    type: [Number, String],
-    required: true
-  }
-];
-const EPS = 1e-4;
-const BASE_DEVICE_WIDTH = 750;
-let isIOS = false;
-let deviceWidth = 0;
-let deviceDPR = 0;
-function checkDeviceWidth() {
-  const { platform, pixelRatio, windowWidth } = getBaseSystemInfo();
-  deviceWidth = windowWidth;
-  deviceDPR = pixelRatio;
-  isIOS = platform === "ios";
-}
-const upx2px = defineSyncApi(API_UPX2PX, (number, newDeviceWidth) => {
-  if (deviceWidth === 0) {
-    checkDeviceWidth();
-  }
-  number = Number(number);
-  if (number === 0) {
-    return 0;
-  }
-  let width = newDeviceWidth || deviceWidth;
-  let result = number / BASE_DEVICE_WIDTH * width;
-  if (result < 0) {
-    result = -result;
-  }
-  result = Math.floor(result + EPS);
-  if (result === 0) {
-    if (deviceDPR === 1 || !isIOS) {
-      result = 1;
-    } else {
-      result = 0.5;
-    }
-  }
-  return number < 0 ? -result : result;
-}, Upx2pxProtocol);
-const API_ADD_INTERCEPTOR = "addInterceptor";
-const API_REMOVE_INTERCEPTOR = "removeInterceptor";
-const AddInterceptorProtocol = [
-  {
-    name: "method",
-    type: [String, Object],
-    required: true
-  }
-];
-const RemoveInterceptorProtocol = AddInterceptorProtocol;
-function mergeInterceptorHook(interceptors2, interceptor) {
-  Object.keys(interceptor).forEach((hook) => {
-    if (isFunction(interceptor[hook])) {
-      interceptors2[hook] = mergeHook(interceptors2[hook], interceptor[hook]);
-    }
-  });
-}
-function removeInterceptorHook(interceptors2, interceptor) {
-  if (!interceptors2 || !interceptor) {
-    return;
-  }
-  Object.keys(interceptor).forEach((name) => {
-    const hooks = interceptors2[name];
-    const hook = interceptor[name];
-    if (isArray(hooks) && isFunction(hook)) {
-      remove(hooks, hook);
-    }
-  });
-}
-function mergeHook(parentVal, childVal) {
-  const res = childVal ? parentVal ? parentVal.concat(childVal) : isArray(childVal) ? childVal : [childVal] : parentVal;
-  return res ? dedupeHooks(res) : res;
-}
-function dedupeHooks(hooks) {
-  const res = [];
-  for (let i = 0; i < hooks.length; i++) {
-    if (res.indexOf(hooks[i]) === -1) {
-      res.push(hooks[i]);
-    }
-  }
-  return res;
-}
-const addInterceptor = defineSyncApi(API_ADD_INTERCEPTOR, (method, interceptor) => {
-  if (isString(method) && isPlainObject(interceptor)) {
-    mergeInterceptorHook(scopedInterceptors[method] || (scopedInterceptors[method] = {}), interceptor);
-  } else if (isPlainObject(method)) {
-    mergeInterceptorHook(globalInterceptors, method);
-  }
-}, AddInterceptorProtocol);
-const removeInterceptor = defineSyncApi(API_REMOVE_INTERCEPTOR, (method, interceptor) => {
-  if (isString(method)) {
-    if (isPlainObject(interceptor)) {
-      removeInterceptorHook(scopedInterceptors[method], interceptor);
-    } else {
-      delete scopedInterceptors[method];
-    }
-  } else if (isPlainObject(method)) {
-    removeInterceptorHook(globalInterceptors, method);
-  }
-}, RemoveInterceptorProtocol);
-const interceptors = {};
-const API_ON = "$on";
-const OnProtocol = [
-  {
-    name: "event",
-    type: String,
-    required: true
-  },
-  {
-    name: "callback",
-    type: Function,
-    required: true
-  }
-];
-const API_ONCE = "$once";
-const OnceProtocol = OnProtocol;
-const API_OFF = "$off";
-const OffProtocol = [
-  {
-    name: "event",
-    type: [String, Array]
-  },
-  {
-    name: "callback",
-    type: Function
-  }
-];
-const API_EMIT = "$emit";
-const EmitProtocol = [
-  {
-    name: "event",
-    type: String,
-    required: true
-  }
-];
-const emitter = new E$1();
-const $on = defineSyncApi(API_ON, (name, callback) => {
-  emitter.on(name, callback);
-  return () => emitter.off(name, callback);
-}, OnProtocol);
-const $once = defineSyncApi(API_ONCE, (name, callback) => {
-  emitter.once(name, callback);
-  return () => emitter.off(name, callback);
-}, OnceProtocol);
-const $off = defineSyncApi(API_OFF, (name, callback) => {
-  if (!name) {
-    emitter.e = {};
-    return;
-  }
-  if (!isArray(name))
-    name = [name];
-  name.forEach((n) => emitter.off(n, callback));
-}, OffProtocol);
-const $emit = defineSyncApi(API_EMIT, (name, ...args) => {
-  emitter.emit(name, ...args);
-}, EmitProtocol);
-let cid;
-let cidErrMsg;
-let enabled;
-function normalizePushMessage(message) {
-  try {
-    return JSON.parse(message);
-  } catch (e2) {
-  }
-  return message;
-}
-function invokePushCallback(args) {
-  if (args.type === "enabled") {
-    enabled = true;
-  } else if (args.type === "clientId") {
-    cid = args.cid;
-    cidErrMsg = args.errMsg;
-    invokeGetPushCidCallbacks(cid, args.errMsg);
-  } else if (args.type === "pushMsg") {
-    const message = {
-      type: "receive",
-      data: normalizePushMessage(args.message)
-    };
-    for (let i = 0; i < onPushMessageCallbacks.length; i++) {
-      const callback = onPushMessageCallbacks[i];
-      callback(message);
-      if (message.stopped) {
-        break;
-      }
-    }
-  } else if (args.type === "click") {
-    onPushMessageCallbacks.forEach((callback) => {
-      callback({
-        type: "click",
-        data: normalizePushMessage(args.message)
-      });
-    });
-  }
-}
-const getPushCidCallbacks = [];
-function invokeGetPushCidCallbacks(cid2, errMsg) {
-  getPushCidCallbacks.forEach((callback) => {
-    callback(cid2, errMsg);
-  });
-  getPushCidCallbacks.length = 0;
-}
-const API_GET_PUSH_CLIENT_ID = "getPushClientId";
-const getPushClientId = defineAsyncApi(API_GET_PUSH_CLIENT_ID, (_, { resolve, reject }) => {
-  Promise.resolve().then(() => {
-    if (typeof enabled === "undefined") {
-      enabled = false;
-      cid = "";
-      cidErrMsg = "uniPush is not enabled";
-    }
-    getPushCidCallbacks.push((cid2, errMsg) => {
-      if (cid2) {
-        resolve({ cid: cid2 });
-      } else {
-        reject(errMsg);
-      }
-    });
-    if (typeof cid !== "undefined") {
-      invokeGetPushCidCallbacks(cid, cidErrMsg);
-    }
-  });
-});
-const onPushMessageCallbacks = [];
-const onPushMessage = (fn) => {
-  if (onPushMessageCallbacks.indexOf(fn) === -1) {
-    onPushMessageCallbacks.push(fn);
-  }
-};
-const offPushMessage = (fn) => {
-  if (!fn) {
-    onPushMessageCallbacks.length = 0;
-  } else {
-    const index2 = onPushMessageCallbacks.indexOf(fn);
-    if (index2 > -1) {
-      onPushMessageCallbacks.splice(index2, 1);
-    }
-  }
-};
-const SYNC_API_RE = /^\$|getLocale|setLocale|sendNativeEvent|restoreGlobal|requireGlobal|getCurrentSubNVue|getMenuButtonBoundingClientRect|^report|interceptors|Interceptor$|getSubNVueById|requireNativePlugin|upx2px|hideKeyboard|canIUse|^create|Sync$|Manager$|base64ToArrayBuffer|arrayBufferToBase64|getDeviceInfo|getAppBaseInfo|getWindowInfo|getSystemSetting|getAppAuthorizeSetting/;
-const CONTEXT_API_RE = /^create|Manager$/;
-const CONTEXT_API_RE_EXC = ["createBLEConnection"];
-const ASYNC_API = ["createBLEConnection"];
-const CALLBACK_API_RE = /^on|^off/;
-function isContextApi(name) {
-  return CONTEXT_API_RE.test(name) && CONTEXT_API_RE_EXC.indexOf(name) === -1;
-}
-function isSyncApi(name) {
-  return SYNC_API_RE.test(name) && ASYNC_API.indexOf(name) === -1;
-}
-function isCallbackApi(name) {
-  return CALLBACK_API_RE.test(name) && name !== "onPush";
-}
-function shouldPromise(name) {
-  if (isContextApi(name) || isSyncApi(name) || isCallbackApi(name)) {
-    return false;
-  }
-  return true;
-}
-if (!Promise.prototype.finally) {
-  Promise.prototype.finally = function(onfinally) {
-    const promise = this.constructor;
-    return this.then((value) => promise.resolve(onfinally && onfinally()).then(() => value), (reason) => promise.resolve(onfinally && onfinally()).then(() => {
-      throw reason;
-    }));
-  };
-}
-function promisify(name, api) {
-  if (!shouldPromise(name)) {
-    return api;
-  }
-  if (!isFunction(api)) {
-    return api;
-  }
-  return function promiseApi(options = {}, ...rest) {
-    if (isFunction(options.success) || isFunction(options.fail) || isFunction(options.complete)) {
-      return wrapperReturnValue(name, invokeApi(name, api, options, rest));
-    }
-    return wrapperReturnValue(name, handlePromise(new Promise((resolve, reject) => {
-      invokeApi(name, api, extend({}, options, {
-        success: resolve,
-        fail: reject
-      }), rest);
-    })));
-  };
-}
-const CALLBACKS = ["success", "fail", "cancel", "complete"];
-function initWrapper(protocols2) {
-  function processCallback(methodName, method, returnValue) {
-    return function(res) {
-      return method(processReturnValue(methodName, res, returnValue));
-    };
-  }
-  function processArgs(methodName, fromArgs, argsOption = {}, returnValue = {}, keepFromArgs = false) {
-    if (isPlainObject(fromArgs)) {
-      const toArgs = keepFromArgs === true ? fromArgs : {};
-      if (isFunction(argsOption)) {
-        argsOption = argsOption(fromArgs, toArgs) || {};
-      }
-      for (const key in fromArgs) {
-        if (hasOwn(argsOption, key)) {
-          let keyOption = argsOption[key];
-          if (isFunction(keyOption)) {
-            keyOption = keyOption(fromArgs[key], fromArgs, toArgs);
-          }
-          if (!keyOption) {
-            console.warn(`微信小程序 ${methodName} 暂不支持 ${key}`);
-          } else if (isString(keyOption)) {
-            toArgs[keyOption] = fromArgs[key];
-          } else if (isPlainObject(keyOption)) {
-            toArgs[keyOption.name ? keyOption.name : key] = keyOption.value;
-          }
-        } else if (CALLBACKS.indexOf(key) !== -1) {
-          const callback = fromArgs[key];
-          if (isFunction(callback)) {
-            toArgs[key] = processCallback(methodName, callback, returnValue);
-          }
-        } else {
-          if (!keepFromArgs && !hasOwn(toArgs, key)) {
-            toArgs[key] = fromArgs[key];
-          }
-        }
-      }
-      return toArgs;
-    } else if (isFunction(fromArgs)) {
-      fromArgs = processCallback(methodName, fromArgs, returnValue);
-    }
-    return fromArgs;
-  }
-  function processReturnValue(methodName, res, returnValue, keepReturnValue = false) {
-    if (isFunction(protocols2.returnValue)) {
-      res = protocols2.returnValue(methodName, res);
-    }
-    return processArgs(methodName, res, returnValue, {}, keepReturnValue);
-  }
-  return function wrapper(methodName, method) {
-    if (!hasOwn(protocols2, methodName)) {
-      return method;
-    }
-    const protocol = protocols2[methodName];
-    if (!protocol) {
-      return function() {
-        console.error(`微信小程序 暂不支持${methodName}`);
-      };
-    }
-    return function(arg1, arg2) {
-      let options = protocol;
-      if (isFunction(protocol)) {
-        options = protocol(arg1);
-      }
-      arg1 = processArgs(methodName, arg1, options.args, options.returnValue);
-      const args = [arg1];
-      if (typeof arg2 !== "undefined") {
-        args.push(arg2);
-      }
-      const returnValue = wx[options.name || methodName].apply(wx, args);
-      if (isSyncApi(methodName)) {
-        return processReturnValue(methodName, returnValue, options.returnValue, isContextApi(methodName));
-      }
-      return returnValue;
-    };
-  };
-}
-const getLocale = () => {
-  const app = isFunction(getApp) && getApp({ allowDefault: true });
-  if (app && app.$vm) {
-    return app.$vm.$locale;
-  }
-  return normalizeLocale(wx.getSystemInfoSync().language) || LOCALE_EN;
-};
-const setLocale = (locale) => {
-  const app = isFunction(getApp) && getApp();
-  if (!app) {
-    return false;
-  }
-  const oldLocale = app.$vm.$locale;
-  if (oldLocale !== locale) {
-    app.$vm.$locale = locale;
-    onLocaleChangeCallbacks.forEach((fn) => fn({ locale }));
-    return true;
-  }
-  return false;
-};
-const onLocaleChangeCallbacks = [];
-const onLocaleChange = (fn) => {
-  if (onLocaleChangeCallbacks.indexOf(fn) === -1) {
-    onLocaleChangeCallbacks.push(fn);
-  }
-};
-if (typeof global !== "undefined") {
-  global.getLocale = getLocale;
-}
-const UUID_KEY = "__DC_STAT_UUID";
-let deviceId;
-function useDeviceId(global2 = wx) {
-  return function addDeviceId(_, toRes) {
-    deviceId = deviceId || global2.getStorageSync(UUID_KEY);
-    if (!deviceId) {
-      deviceId = Date.now() + "" + Math.floor(Math.random() * 1e7);
-      wx.setStorage({
-        key: UUID_KEY,
-        data: deviceId
-      });
-    }
-    toRes.deviceId = deviceId;
-  };
-}
-function addSafeAreaInsets(fromRes, toRes) {
-  if (fromRes.safeArea) {
-    const safeArea = fromRes.safeArea;
-    toRes.safeAreaInsets = {
-      top: safeArea.top,
-      left: safeArea.left,
-      right: fromRes.windowWidth - safeArea.right,
-      bottom: fromRes.screenHeight - safeArea.bottom
-    };
-  }
-}
-function populateParameters(fromRes, toRes) {
-  const { brand = "", model = "", system = "", language = "", theme, version: version2, platform, fontSizeSetting, SDKVersion, pixelRatio, deviceOrientation } = fromRes;
-  let osName = "";
-  let osVersion = "";
-  {
-    osName = system.split(" ")[0] || "";
-    osVersion = system.split(" ")[1] || "";
-  }
-  let hostVersion = version2;
-  let deviceType = getGetDeviceType(fromRes, model);
-  let deviceBrand = getDeviceBrand(brand);
-  let _hostName = getHostName(fromRes);
-  let _deviceOrientation = deviceOrientation;
-  let _devicePixelRatio = pixelRatio;
-  let _SDKVersion = SDKVersion;
-  const hostLanguage = language.replace(/_/g, "-");
-  const parameters = {
-    appId: "__UNI__FC2B806",
-    appName: "gpt",
-    appVersion: "1.0.0",
-    appVersionCode: "100",
-    appLanguage: getAppLanguage(hostLanguage),
-    uniCompileVersion: "4.24",
-    uniRuntimeVersion: "4.24",
-    uniPlatform: "mp-weixin",
-    deviceBrand,
-    deviceModel: model,
-    deviceType,
-    devicePixelRatio: _devicePixelRatio,
-    deviceOrientation: _deviceOrientation,
-    osName: osName.toLocaleLowerCase(),
-    osVersion,
-    hostTheme: theme,
-    hostVersion,
-    hostLanguage,
-    hostName: _hostName,
-    hostSDKVersion: _SDKVersion,
-    hostFontSizeSetting: fontSizeSetting,
-    windowTop: 0,
-    windowBottom: 0,
-    // TODO
-    osLanguage: void 0,
-    osTheme: void 0,
-    ua: void 0,
-    hostPackageName: void 0,
-    browserName: void 0,
-    browserVersion: void 0
-  };
-  extend(toRes, parameters);
-}
-function getGetDeviceType(fromRes, model) {
-  let deviceType = fromRes.deviceType || "phone";
-  {
-    const deviceTypeMaps = {
-      ipad: "pad",
-      windows: "pc",
-      mac: "pc"
-    };
-    const deviceTypeMapsKeys = Object.keys(deviceTypeMaps);
-    const _model = model.toLocaleLowerCase();
-    for (let index2 = 0; index2 < deviceTypeMapsKeys.length; index2++) {
-      const _m = deviceTypeMapsKeys[index2];
-      if (_model.indexOf(_m) !== -1) {
-        deviceType = deviceTypeMaps[_m];
-        break;
-      }
-    }
-  }
-  return deviceType;
-}
-function getDeviceBrand(brand) {
-  let deviceBrand = brand;
-  if (deviceBrand) {
-    deviceBrand = deviceBrand.toLocaleLowerCase();
-  }
-  return deviceBrand;
-}
-function getAppLanguage(defaultLanguage) {
-  return getLocale ? getLocale() : defaultLanguage;
-}
-function getHostName(fromRes) {
-  const _platform = "WeChat";
-  let _hostName = fromRes.hostName || _platform;
-  {
-    if (fromRes.environment) {
-      _hostName = fromRes.environment;
-    } else if (fromRes.host && fromRes.host.env) {
-      _hostName = fromRes.host.env;
-    }
-  }
-  return _hostName;
-}
-const getSystemInfo = {
-  returnValue: (fromRes, toRes) => {
-    addSafeAreaInsets(fromRes, toRes);
-    useDeviceId()(fromRes, toRes);
-    populateParameters(fromRes, toRes);
-  }
-};
-const getSystemInfoSync = getSystemInfo;
-const redirectTo = {};
-const previewImage = {
-  args(fromArgs, toArgs) {
-    let currentIndex = parseInt(fromArgs.current);
-    if (isNaN(currentIndex)) {
-      return;
-    }
-    const urls = fromArgs.urls;
-    if (!isArray(urls)) {
-      return;
-    }
-    const len = urls.length;
-    if (!len) {
-      return;
-    }
-    if (currentIndex < 0) {
-      currentIndex = 0;
-    } else if (currentIndex >= len) {
-      currentIndex = len - 1;
-    }
-    if (currentIndex > 0) {
-      toArgs.current = urls[currentIndex];
-      toArgs.urls = urls.filter((item, index2) => index2 < currentIndex ? item !== urls[currentIndex] : true);
-    } else {
-      toArgs.current = urls[0];
-    }
-    return {
-      indicator: false,
-      loop: false
-    };
-  }
-};
-const showActionSheet = {
-  args(fromArgs, toArgs) {
-    toArgs.alertText = fromArgs.title;
-  }
-};
-const getDeviceInfo = {
-  returnValue: (fromRes, toRes) => {
-    const { brand, model } = fromRes;
-    let deviceType = getGetDeviceType(fromRes, model);
-    let deviceBrand = getDeviceBrand(brand);
-    useDeviceId()(fromRes, toRes);
-    toRes = sortObject(extend(toRes, {
-      deviceType,
-      deviceBrand,
-      deviceModel: model
-    }));
-  }
-};
-const getAppBaseInfo = {
-  returnValue: (fromRes, toRes) => {
-    const { version: version2, language, SDKVersion, theme } = fromRes;
-    let _hostName = getHostName(fromRes);
-    let hostLanguage = language.replace(/_/g, "-");
-    toRes = sortObject(extend(toRes, {
-      hostVersion: version2,
-      hostLanguage,
-      hostName: _hostName,
-      hostSDKVersion: SDKVersion,
-      hostTheme: theme,
-      appId: "__UNI__FC2B806",
-      appName: "gpt",
-      appVersion: "1.0.0",
-      appVersionCode: "100",
-      appLanguage: getAppLanguage(hostLanguage)
-    }));
-  }
-};
-const getWindowInfo = {
-  returnValue: (fromRes, toRes) => {
-    addSafeAreaInsets(fromRes, toRes);
-    toRes = sortObject(extend(toRes, {
-      windowTop: 0,
-      windowBottom: 0
-    }));
-  }
-};
-const getAppAuthorizeSetting = {
-  returnValue: function(fromRes, toRes) {
-    const { locationReducedAccuracy } = fromRes;
-    toRes.locationAccuracy = "unsupported";
-    if (locationReducedAccuracy === true) {
-      toRes.locationAccuracy = "reduced";
-    } else if (locationReducedAccuracy === false) {
-      toRes.locationAccuracy = "full";
-    }
-  }
-};
-const baseApis = {
-  $on,
-  $off,
-  $once,
-  $emit,
-  upx2px,
-  interceptors,
-  addInterceptor,
-  removeInterceptor,
-  onCreateVueApp,
-  invokeCreateVueAppHook,
-  getLocale,
-  setLocale,
-  onLocaleChange,
-  getPushClientId,
-  onPushMessage,
-  offPushMessage,
-  invokePushCallback
-};
-function initUni(api, protocols2, platform = wx) {
-  const wrapper = initWrapper(protocols2);
-  const UniProxyHandlers = {
-    get(target, key) {
-      if (hasOwn(target, key)) {
-        return target[key];
-      }
-      if (hasOwn(api, key)) {
-        return promisify(key, api[key]);
-      }
-      if (hasOwn(baseApis, key)) {
-        return promisify(key, baseApis[key]);
-      }
-      return promisify(key, wrapper(key, platform[key]));
-    }
-  };
-  return new Proxy({}, UniProxyHandlers);
-}
-function initGetProvider(providers) {
-  return function getProvider2({ service, success, fail, complete }) {
-    let res;
-    if (providers[service]) {
-      res = {
-        errMsg: "getProvider:ok",
-        service,
-        provider: providers[service]
-      };
-      isFunction(success) && success(res);
-    } else {
-      res = {
-        errMsg: "getProvider:fail:服务[" + service + "]不存在"
-      };
-      isFunction(fail) && fail(res);
-    }
-    isFunction(complete) && complete(res);
-  };
-}
-const objectKeys = [
-  "qy",
-  "env",
-  "error",
-  "version",
-  "lanDebug",
-  "cloud",
-  "serviceMarket",
-  "router",
-  "worklet",
-  "__webpack_require_UNI_MP_PLUGIN__"
-];
-const singlePageDisableKey = ["lanDebug", "router", "worklet"];
-const launchOption = wx.getLaunchOptionsSync ? wx.getLaunchOptionsSync() : null;
-function isWxKey(key) {
-  if (launchOption && launchOption.scene === 1154 && singlePageDisableKey.includes(key)) {
-    return false;
-  }
-  return objectKeys.indexOf(key) > -1 || typeof wx[key] === "function";
-}
-function initWx() {
-  const newWx = {};
-  for (const key in wx) {
-    if (isWxKey(key)) {
-      newWx[key] = wx[key];
-    }
-  }
-  if (typeof globalThis !== "undefined" && typeof requireMiniProgram === "undefined") {
-    globalThis.wx = newWx;
-  }
-  return newWx;
-}
-const mocks$1 = ["__route__", "__wxExparserNodeId__", "__wxWebviewId__"];
-const getProvider = initGetProvider({
-  oauth: ["weixin"],
-  share: ["weixin"],
-  payment: ["wxpay"],
-  push: ["weixin"]
-});
-function initComponentMocks(component) {
-  const res = /* @__PURE__ */ Object.create(null);
-  mocks$1.forEach((name) => {
-    res[name] = component[name];
-  });
-  return res;
-}
-function createSelectorQuery() {
-  const query = wx$2.createSelectorQuery();
-  const oldIn = query.in;
-  query.in = function newIn(component) {
-    return oldIn.call(this, initComponentMocks(component));
-  };
-  return query;
-}
-const wx$2 = initWx();
-let baseInfo = wx$2.getAppBaseInfo && wx$2.getAppBaseInfo();
-if (!baseInfo) {
-  baseInfo = wx$2.getSystemInfoSync();
-}
-const host = baseInfo ? baseInfo.host : null;
-const shareVideoMessage = host && host.env === "SAAASDK" ? wx$2.miniapp.shareVideoMessage : wx$2.shareVideoMessage;
-var shims = /* @__PURE__ */ Object.freeze({
-  __proto__: null,
-  createSelectorQuery,
-  getProvider,
-  shareVideoMessage
-});
-const compressImage = {
-  args(fromArgs, toArgs) {
-    if (fromArgs.compressedHeight && !toArgs.compressHeight) {
-      toArgs.compressHeight = fromArgs.compressedHeight;
-    }
-    if (fromArgs.compressedWidth && !toArgs.compressWidth) {
-      toArgs.compressWidth = fromArgs.compressedWidth;
-    }
-  }
-};
-var protocols = /* @__PURE__ */ Object.freeze({
-  __proto__: null,
-  compressImage,
-  getAppAuthorizeSetting,
-  getAppBaseInfo,
-  getDeviceInfo,
-  getSystemInfo,
-  getSystemInfoSync,
-  getWindowInfo,
-  previewImage,
-  redirectTo,
-  showActionSheet
-});
-const wx$1 = initWx();
-var index = initUni(shims, protocols, wx$1);
-new Set(
-  /* @__PURE__ */ Object.getOwnPropertyNames(Symbol).filter((key) => key !== "arguments" && key !== "caller").map((key) => Symbol[key]).filter(isSymbol)
-);
-function toRaw$1(observed) {
-  const raw = observed && observed["__v_raw"];
-  return raw ? toRaw$1(raw) : observed;
-}
-function isRef$1(r2) {
-  return !!(r2 && r2.__v_isRef === true);
-}
-/**
-* @vue/runtime-core v3.4.21
-* (c) 2018-present Yuxi (Evan) You and Vue contributors
-* @license MIT
-**/
-const stack$1 = [];
-function pushWarningContext$1(vnode) {
-  stack$1.push(vnode);
-}
-function popWarningContext$1() {
-  stack$1.pop();
-}
-function warn$1$1(msg, ...args) {
-  const instance = stack$1.length ? stack$1[stack$1.length - 1].component : null;
-  const appWarnHandler = instance && instance.appContext.config.warnHandler;
-  const trace = getComponentTrace$1();
-  if (appWarnHandler) {
-    callWithErrorHandling$1(
-      appWarnHandler,
-      instance,
-      11,
-      [
-        msg + args.map((a) => {
-          var _a, _b;
-          return (_b = (_a = a.toString) == null ? void 0 : _a.call(a)) != null ? _b : JSON.stringify(a);
-        }).join(""),
-        instance && instance.proxy,
-        trace.map(
-          ({ vnode }) => `at <${formatComponentName$1(instance, vnode.type)}>`
-        ).join("\n"),
-        trace
-      ]
-    );
-  } else {
-    const warnArgs = [`[Vue warn]: ${msg}`, ...args];
-    if (trace.length && // avoid spamming console during tests
-    true) {
-      warnArgs.push(`
-`, ...formatTrace$1(trace));
-    }
-    console.warn(...warnArgs);
-  }
-}
-function getComponentTrace$1() {
-  let currentVNode = stack$1[stack$1.length - 1];
-  if (!currentVNode) {
-    return [];
-  }
-  const normalizedStack = [];
-  while (currentVNode) {
-    const last = normalizedStack[0];
-    if (last && last.vnode === currentVNode) {
-      last.recurseCount++;
-    } else {
-      normalizedStack.push({
-        vnode: currentVNode,
-        recurseCount: 0
-      });
-    }
-    const parentInstance = currentVNode.component && currentVNode.component.parent;
-    currentVNode = parentInstance && parentInstance.vnode;
-  }
-  return normalizedStack;
-}
-function formatTrace$1(trace) {
-  const logs = [];
-  trace.forEach((entry, i) => {
-    logs.push(...i === 0 ? [] : [`
-`], ...formatTraceEntry$1(entry));
-  });
-  return logs;
-}
-function formatTraceEntry$1({ vnode, recurseCount }) {
-  const postfix = recurseCount > 0 ? `... (${recurseCount} recursive calls)` : ``;
-  const isRoot = vnode.component ? vnode.component.parent == null : false;
-  const open = ` at <${formatComponentName$1(
-    vnode.component,
-    vnode.type,
-    isRoot
-  )}`;
-  const close = `>` + postfix;
-  return vnode.props ? [open, ...formatProps$1(vnode.props), close] : [open + close];
-}
-function formatProps$1(props) {
-  const res = [];
-  const keys = Object.keys(props);
-  keys.slice(0, 3).forEach((key) => {
-    res.push(...formatProp$1(key, props[key]));
-  });
-  if (keys.length > 3) {
-    res.push(` ...`);
-  }
-  return res;
-}
-function formatProp$1(key, value, raw) {
-  if (isString(value)) {
-    value = JSON.stringify(value);
-    return raw ? value : [`${key}=${value}`];
-  } else if (typeof value === "number" || typeof value === "boolean" || value == null) {
-    return raw ? value : [`${key}=${value}`];
-  } else if (isRef$1(value)) {
-    value = formatProp$1(key, toRaw$1(value.value), true);
-    return raw ? value : [`${key}=Ref<`, value, `>`];
-  } else if (isFunction(value)) {
-    return [`${key}=fn${value.name ? `<${value.name}>` : ``}`];
-  } else {
-    value = toRaw$1(value);
-    return raw ? value : [`${key}=`, value];
-  }
-}
-const ErrorTypeStrings$1 = {
-  ["sp"]: "serverPrefetch hook",
-  ["bc"]: "beforeCreate hook",
-  ["c"]: "created hook",
-  ["bm"]: "beforeMount hook",
-  ["m"]: "mounted hook",
-  ["bu"]: "beforeUpdate hook",
-  ["u"]: "updated",
-  ["bum"]: "beforeUnmount hook",
-  ["um"]: "unmounted hook",
-  ["a"]: "activated hook",
-  ["da"]: "deactivated hook",
-  ["ec"]: "errorCaptured hook",
-  ["rtc"]: "renderTracked hook",
-  ["rtg"]: "renderTriggered hook",
-  [0]: "setup function",
-  [1]: "render function",
-  [2]: "watcher getter",
-  [3]: "watcher callback",
-  [4]: "watcher cleanup function",
-  [5]: "native event handler",
-  [6]: "component event handler",
-  [7]: "vnode hook",
-  [8]: "directive hook",
-  [9]: "transition hook",
-  [10]: "app errorHandler",
-  [11]: "app warnHandler",
-  [12]: "ref function",
-  [13]: "async component loader",
-  [14]: "scheduler flush. This is likely a Vue internals bug. Please open an issue at https://github.com/vuejs/core ."
-};
-function callWithErrorHandling$1(fn, instance, type, args) {
-  try {
-    return args ? fn(...args) : fn();
-  } catch (err) {
-    handleError$1(err, instance, type);
-  }
-}
-function handleError$1(err, instance, type, throwInDev = true) {
-  const contextVNode = instance ? instance.vnode : null;
-  if (instance) {
-    let cur = instance.parent;
-    const exposedInstance = instance.proxy;
-    const errorInfo = ErrorTypeStrings$1[type];
-    while (cur) {
-      const errorCapturedHooks = cur.ec;
-      if (errorCapturedHooks) {
-        for (let i = 0; i < errorCapturedHooks.length; i++) {
-          if (errorCapturedHooks[i](err, exposedInstance, errorInfo) === false) {
-            return;
-          }
-        }
-      }
-      cur = cur.parent;
-    }
-    const appErrorHandler = instance.appContext.config.errorHandler;
-    if (appErrorHandler) {
-      callWithErrorHandling$1(
-        appErrorHandler,
-        null,
-        10,
-        [err, exposedInstance, errorInfo]
-      );
-      return;
-    }
-  }
-  logError$1(err, type, contextVNode, throwInDev);
-}
-function logError$1(err, type, contextVNode, throwInDev = true) {
-  {
-    const info = ErrorTypeStrings$1[type];
-    if (contextVNode) {
-      pushWarningContext$1(contextVNode);
-    }
-    warn$1$1(`Unhandled error${info ? ` during execution of ${info}` : ``}`);
-    if (contextVNode) {
-      popWarningContext$1();
-    }
-    if (throwInDev) {
-      throw err;
-    } else {
-      console.error(err);
-    }
-  }
-}
-let isFlushing$1 = false;
-let isFlushPending$1 = false;
-const queue$1 = [];
-let flushIndex$1 = 0;
-const pendingPostFlushCbs$1 = [];
-let activePostFlushCbs$1 = null;
-let postFlushIndex$1 = 0;
-const resolvedPromise$1 = /* @__PURE__ */ Promise.resolve();
-const RECURSION_LIMIT$1 = 100;
-function findInsertionIndex$1(id) {
-  let start = flushIndex$1 + 1;
-  let end = queue$1.length;
-  while (start < end) {
-    const middle = start + end >>> 1;
-    const middleJob = queue$1[middle];
-    const middleJobId = getId$1(middleJob);
-    if (middleJobId < id || middleJobId === id && middleJob.pre) {
-      start = middle + 1;
-    } else {
-      end = middle;
-    }
-  }
-  return start;
-}
-function queueJob$1(job) {
-  if (!queue$1.length || !queue$1.includes(
-    job,
-    isFlushing$1 && job.allowRecurse ? flushIndex$1 + 1 : flushIndex$1
-  )) {
-    if (job.id == null) {
-      queue$1.push(job);
-    } else {
-      queue$1.splice(findInsertionIndex$1(job.id), 0, job);
-    }
-    queueFlush$1();
-  }
-}
-function queueFlush$1() {
-  if (!isFlushing$1 && !isFlushPending$1) {
-    isFlushPending$1 = true;
-    resolvedPromise$1.then(flushJobs$1);
-  }
-}
-function queuePostFlushCb$1(cb) {
-  if (!isArray(cb)) {
-    if (!activePostFlushCbs$1 || !activePostFlushCbs$1.includes(
-      cb,
-      cb.allowRecurse ? postFlushIndex$1 + 1 : postFlushIndex$1
-    )) {
-      pendingPostFlushCbs$1.push(cb);
-    }
-  } else {
-    pendingPostFlushCbs$1.push(...cb);
-  }
-  queueFlush$1();
-}
-function flushPostFlushCbs$1(seen) {
-  if (pendingPostFlushCbs$1.length) {
-    const deduped = [...new Set(pendingPostFlushCbs$1)].sort(
-      (a, b) => getId$1(a) - getId$1(b)
-    );
-    pendingPostFlushCbs$1.length = 0;
-    if (activePostFlushCbs$1) {
-      activePostFlushCbs$1.push(...deduped);
-      return;
-    }
-    activePostFlushCbs$1 = deduped;
-    {
-      seen = seen || /* @__PURE__ */ new Map();
-    }
-    for (postFlushIndex$1 = 0; postFlushIndex$1 < activePostFlushCbs$1.length; postFlushIndex$1++) {
-      if (checkRecursiveUpdates$1(seen, activePostFlushCbs$1[postFlushIndex$1])) {
-        continue;
-      }
-      activePostFlushCbs$1[postFlushIndex$1]();
-    }
-    activePostFlushCbs$1 = null;
-    postFlushIndex$1 = 0;
-  }
-}
-const getId$1 = (job) => job.id == null ? Infinity : job.id;
-const comparator$1 = (a, b) => {
-  const diff2 = getId$1(a) - getId$1(b);
-  if (diff2 === 0) {
-    if (a.pre && !b.pre)
-      return -1;
-    if (b.pre && !a.pre)
-      return 1;
-  }
-  return diff2;
-};
-function flushJobs$1(seen) {
-  isFlushPending$1 = false;
-  isFlushing$1 = true;
-  {
-    seen = seen || /* @__PURE__ */ new Map();
-  }
-  queue$1.sort(comparator$1);
-  const check = (job) => checkRecursiveUpdates$1(seen, job);
-  try {
-    for (flushIndex$1 = 0; flushIndex$1 < queue$1.length; flushIndex$1++) {
-      const job = queue$1[flushIndex$1];
-      if (job && job.active !== false) {
-        if (check(job)) {
-          continue;
-        }
-        callWithErrorHandling$1(job, null, 14);
-      }
-    }
-  } finally {
-    flushIndex$1 = 0;
-    queue$1.length = 0;
-    flushPostFlushCbs$1(seen);
-    isFlushing$1 = false;
-    if (queue$1.length || pendingPostFlushCbs$1.length) {
-      flushJobs$1(seen);
-    }
-  }
-}
-function checkRecursiveUpdates$1(seen, fn) {
-  if (!seen.has(fn)) {
-    seen.set(fn, 1);
-  } else {
-    const count = seen.get(fn);
-    if (count > RECURSION_LIMIT$1) {
-      const instance = fn.ownerInstance;
-      const componentName = instance && getComponentName$1(instance.type);
-      handleError$1(
-        `Maximum recursive updates exceeded${componentName ? ` in component <${componentName}>` : ``}. This means you have a reactive effect that is mutating its own dependencies and thus recursively triggering itself. Possible sources include component template, render function, updated hook or watcher source function.`,
-        null,
-        10
-      );
-      return true;
-    } else {
-      seen.set(fn, count + 1);
-    }
-  }
-}
-const hmrDirtyComponents = /* @__PURE__ */ new Set();
-{
-  getGlobalThis().__VUE_HMR_RUNTIME__ = {
-    createRecord: tryWrap(createRecord),
-    rerender: tryWrap(rerender),
-    reload: tryWrap(reload)
-  };
-}
-const map = /* @__PURE__ */ new Map();
-function createRecord(id, initialDef) {
-  if (map.has(id)) {
-    return false;
-  }
-  map.set(id, {
-    initialDef: normalizeClassComponent(initialDef),
-    instances: /* @__PURE__ */ new Set()
-  });
-  return true;
-}
-function normalizeClassComponent(component) {
-  return isClassComponent$1(component) ? component.__vccOpts : component;
-}
-function rerender(id, newRender) {
-  const record = map.get(id);
-  if (!record) {
-    return;
-  }
-  record.initialDef.render = newRender;
-  [...record.instances].forEach((instance) => {
-    if (newRender) {
-      instance.render = newRender;
-      normalizeClassComponent(instance.type).render = newRender;
-    }
-    instance.renderCache = [];
-    instance.effect.dirty = true;
-    instance.update();
-  });
-}
-function reload(id, newComp) {
-  const record = map.get(id);
-  if (!record)
-    return;
-  newComp = normalizeClassComponent(newComp);
-  updateComponentDef(record.initialDef, newComp);
-  const instances = [...record.instances];
-  for (const instance of instances) {
-    const oldComp = normalizeClassComponent(instance.type);
-    if (!hmrDirtyComponents.has(oldComp)) {
-      if (oldComp !== record.initialDef) {
-        updateComponentDef(oldComp, newComp);
-      }
-      hmrDirtyComponents.add(oldComp);
-    }
-    instance.appContext.propsCache.delete(instance.type);
-    instance.appContext.emitsCache.delete(instance.type);
-    instance.appContext.optionsCache.delete(instance.type);
-    if (instance.ceReload) {
-      hmrDirtyComponents.add(oldComp);
-      instance.ceReload(newComp.styles);
-      hmrDirtyComponents.delete(oldComp);
-    } else if (instance.parent) {
-      instance.parent.effect.dirty = true;
-      queueJob$1(instance.parent.update);
-    } else if (instance.appContext.reload) {
-      instance.appContext.reload();
-    } else if (typeof window !== "undefined") {
-      window.location.reload();
-    } else {
-      console.warn(
-        "[HMR] Root or manually mounted instance modified. Full reload required."
-      );
-    }
-  }
-  queuePostFlushCb$1(() => {
-    for (const instance of instances) {
-      hmrDirtyComponents.delete(
-        normalizeClassComponent(instance.type)
-      );
-    }
-  });
-}
-function updateComponentDef(oldComp, newComp) {
-  extend(oldComp, newComp);
-  for (const key in oldComp) {
-    if (key !== "__file" && !(key in newComp)) {
-      delete oldComp[key];
-    }
-  }
-}
-function tryWrap(fn) {
-  return (id, arg) => {
-    try {
-      return fn(id, arg);
-    } catch (e2) {
-      console.error(e2);
-      console.warn(
-        `[HMR] Something went wrong during Vue component hot-reload. Full reload required.`
-      );
-    }
-  };
-}
-{
-  const g = getGlobalThis();
-  const registerGlobalSetter = (key, setter) => {
-    let setters;
-    if (!(setters = g[key]))
-      setters = g[key] = [];
-    setters.push(setter);
-    return (v) => {
-      if (setters.length > 1)
-        setters.forEach((set2) => set2(v));
-      else
-        setters[0](v);
-    };
-  };
-  registerGlobalSetter(
-    `__VUE_INSTANCE_SETTERS__`,
-    (v) => v
-  );
-  registerGlobalSetter(
-    `__VUE_SSR_SETTERS__`,
-    (v) => v
-  );
-}
-const classifyRE$1 = /(?:^|[-_])(\w)/g;
-const classify$1 = (str) => str.replace(classifyRE$1, (c2) => c2.toUpperCase()).replace(/[-_]/g, "");
-function getComponentName$1(Component2, includeInferred = true) {
-  return isFunction(Component2) ? Component2.displayName || Component2.name : Component2.name || includeInferred && Component2.__name;
-}
-function formatComponentName$1(instance, Component2, isRoot = false) {
-  let name = getComponentName$1(Component2);
-  if (!name && Component2.__file) {
-    const match = Component2.__file.match(/([^/\\]+)\.\w+$/);
-    if (match) {
-      name = match[1];
-    }
-  }
-  if (!name && instance && instance.parent) {
-    const inferFromRegistry = (registry) => {
-      for (const key in registry) {
-        if (registry[key] === Component2) {
-          return key;
-        }
-      }
-    };
-    name = inferFromRegistry(
-      instance.components || instance.parent.type.components
-    ) || inferFromRegistry(instance.appContext.components);
-  }
-  return name ? classify$1(name) : isRoot ? `App` : `Anonymous`;
-}
-function isClassComponent$1(value) {
-  return isFunction(value) && "__vccOpts" in value;
-}
 /**
 * @dcloudio/uni-mp-vue v3.4.21
 * (c) 2018-present Yuxi (Evan) You and Vue contributors
@@ -2169,7 +516,7 @@ function getCurrentScope() {
   return activeEffectScope;
 }
 let activeEffect;
-class ReactiveEffect2 {
+class ReactiveEffect {
   constructor(fn, trigger2, scheduler, scope) {
     this.fn = fn;
     this.trigger = trigger2;
@@ -2455,7 +802,7 @@ function hasOwnProperty(key) {
   track(obj, "has", key);
   return obj.hasOwnProperty(key);
 }
-class BaseReactiveHandler2 {
+class BaseReactiveHandler {
   constructor(_isReadonly = false, _isShallow = false) {
     this._isReadonly = _isReadonly;
     this._isShallow = _isShallow;
@@ -2504,7 +851,7 @@ class BaseReactiveHandler2 {
     return res;
   }
 }
-class MutableReactiveHandler2 extends BaseReactiveHandler2 {
+class MutableReactiveHandler extends BaseReactiveHandler {
   constructor(isShallow2 = false) {
     super(false, isShallow2);
   }
@@ -2561,7 +908,7 @@ class MutableReactiveHandler2 extends BaseReactiveHandler2 {
     return Reflect.ownKeys(target);
   }
 }
-class ReadonlyReactiveHandler2 extends BaseReactiveHandler2 {
+class ReadonlyReactiveHandler extends BaseReactiveHandler {
   constructor(isShallow2 = false) {
     super(true, isShallow2);
   }
@@ -2584,12 +931,12 @@ class ReadonlyReactiveHandler2 extends BaseReactiveHandler2 {
     return true;
   }
 }
-const mutableHandlers = /* @__PURE__ */ new MutableReactiveHandler2();
-const readonlyHandlers = /* @__PURE__ */ new ReadonlyReactiveHandler2();
-const shallowReactiveHandlers = /* @__PURE__ */ new MutableReactiveHandler2(
+const mutableHandlers = /* @__PURE__ */ new MutableReactiveHandler();
+const readonlyHandlers = /* @__PURE__ */ new ReadonlyReactiveHandler();
+const shallowReactiveHandlers = /* @__PURE__ */ new MutableReactiveHandler(
   true
 );
-const shallowReadonlyHandlers = /* @__PURE__ */ new ReadonlyReactiveHandler2(true);
+const shallowReadonlyHandlers = /* @__PURE__ */ new ReadonlyReactiveHandler(true);
 const toShallow = (value) => value;
 const getProto = (v) => Reflect.getPrototypeOf(v);
 function get(target, key, isReadonly2 = false, isShallow2 = false) {
@@ -2986,7 +1333,7 @@ class ComputedRefImpl {
     this.dep = void 0;
     this.__v_isRef = true;
     this["__v_isReadonly"] = false;
-    this.effect = new ReactiveEffect2(
+    this.effect = new ReactiveEffect(
       () => getter(this._value),
       () => triggerRefValue(
         this,
@@ -2998,20 +1345,20 @@ class ComputedRefImpl {
     this["__v_isReadonly"] = isReadonly2;
   }
   get value() {
-    const self2 = toRaw(this);
-    if ((!self2._cacheable || self2.effect.dirty) && hasChanged(self2._value, self2._value = self2.effect.run())) {
-      triggerRefValue(self2, 4);
+    const self = toRaw(this);
+    if ((!self._cacheable || self.effect.dirty) && hasChanged(self._value, self._value = self.effect.run())) {
+      triggerRefValue(self, 4);
     }
-    trackRefValue(self2);
-    if (self2.effect._dirtyLevel >= 2) {
+    trackRefValue(self);
+    if (self.effect._dirtyLevel >= 2) {
       if (this._warnRecursive) {
         warn$2(COMPUTED_SIDE_EFFECT_WARN, `
 
 getter: `, this.getter);
       }
-      triggerRefValue(self2, 2);
+      triggerRefValue(self, 2);
     }
-    return self2._value;
+    return self._value;
   }
   set value(newValue) {
     this._setter(newValue);
@@ -3341,7 +1688,7 @@ function logError(err, type, contextVNode, throwInDev = true) {
 }
 let isFlushing = false;
 let isFlushPending = false;
-const queue = [];
+const queue$1 = [];
 let flushIndex = 0;
 const pendingPostFlushCbs = [];
 let activePostFlushCbs = null;
@@ -3355,10 +1702,10 @@ function nextTick$1(fn) {
 }
 function findInsertionIndex(id) {
   let start = flushIndex + 1;
-  let end = queue.length;
+  let end = queue$1.length;
   while (start < end) {
     const middle = start + end >>> 1;
-    const middleJob = queue[middle];
+    const middleJob = queue$1[middle];
     const middleJobId = getId(middleJob);
     if (middleJobId < id || middleJobId === id && middleJob.pre) {
       start = middle + 1;
@@ -3369,14 +1716,14 @@ function findInsertionIndex(id) {
   return start;
 }
 function queueJob(job) {
-  if (!queue.length || !queue.includes(
+  if (!queue$1.length || !queue$1.includes(
     job,
     isFlushing && job.allowRecurse ? flushIndex + 1 : flushIndex
   )) {
     if (job.id == null) {
-      queue.push(job);
+      queue$1.push(job);
     } else {
-      queue.splice(findInsertionIndex(job.id), 0, job);
+      queue$1.splice(findInsertionIndex(job.id), 0, job);
     }
     queueFlush();
   }
@@ -3388,12 +1735,12 @@ function queueFlush() {
   }
 }
 function hasQueueJob(job) {
-  return queue.indexOf(job) > -1;
+  return queue$1.indexOf(job) > -1;
 }
 function invalidateJob(job) {
-  const i = queue.indexOf(job);
+  const i = queue$1.indexOf(job);
   if (i > flushIndex) {
-    queue.splice(i, 1);
+    queue$1.splice(i, 1);
   }
 }
 function queuePostFlushCb(cb) {
@@ -3413,16 +1760,13 @@ function flushPreFlushCbs(instance, seen, i = isFlushing ? flushIndex + 1 : 0) {
   {
     seen = seen || /* @__PURE__ */ new Map();
   }
-  for (; i < queue.length; i++) {
-    const cb = queue[i];
+  for (; i < queue$1.length; i++) {
+    const cb = queue$1[i];
     if (cb && cb.pre) {
-      if (instance && cb.id !== instance.uid) {
-        continue;
-      }
       if (checkRecursiveUpdates(seen, cb)) {
         continue;
       }
-      queue.splice(i, 1);
+      queue$1.splice(i, 1);
       i--;
       cb();
     }
@@ -3469,11 +1813,11 @@ function flushJobs(seen) {
   {
     seen = seen || /* @__PURE__ */ new Map();
   }
-  queue.sort(comparator);
+  queue$1.sort(comparator);
   const check = (job) => checkRecursiveUpdates(seen, job);
   try {
-    for (flushIndex = 0; flushIndex < queue.length; flushIndex++) {
-      const job = queue[flushIndex];
+    for (flushIndex = 0; flushIndex < queue$1.length; flushIndex++) {
+      const job = queue$1[flushIndex];
       if (job && job.active !== false) {
         if (check(job)) {
           continue;
@@ -3483,11 +1827,11 @@ function flushJobs(seen) {
     }
   } finally {
     flushIndex = 0;
-    queue.length = 0;
+    queue$1.length = 0;
     flushPostFlushCbs(seen);
     isFlushing = false;
     currentFlushPromise = null;
-    if (queue.length || pendingPostFlushCbs.length) {
+    if (queue$1.length || pendingPostFlushCbs.length) {
       flushJobs(seen);
     }
   }
@@ -3907,7 +2251,7 @@ function doWatch(source, cb, {
       job.id = instance.uid;
     scheduler = () => queueJob(job);
   }
-  const effect2 = new ReactiveEffect2(getter, NOOP, scheduler);
+  const effect2 = new ReactiveEffect(getter, NOOP, scheduler);
   const scope = getCurrentScope();
   const unwatch = () => {
     effect2.stop();
@@ -4549,8 +2893,13 @@ function applyOptions$1(instance) {
       }
     }
   }
-  if (injectOptions) {
-    resolveInjections(injectOptions, ctx, checkDuplicateProperties);
+  function initInjections() {
+    if (injectOptions) {
+      resolveInjections(injectOptions, ctx, checkDuplicateProperties);
+    }
+  }
+  {
+    initInjections();
   }
   if (methods) {
     for (const key in methods) {
@@ -4638,13 +2987,16 @@ function applyOptions$1(instance) {
       createWatcher(watchOptions[key], ctx, publicThis, key);
     }
   }
-  {
+  function initProvides() {
     if (provideOptions) {
       const provides = isFunction(provideOptions) ? provideOptions.call(publicThis) : provideOptions;
       Reflect.ownKeys(provides).forEach((key) => {
         provide(key, provides[key]);
       });
     }
+  }
+  {
+    initProvides();
   }
   {
     if (created) {
@@ -4931,11 +3283,6 @@ function initProps$1(instance, rawProps, isStateful, isSSR = false) {
   instance.attrs = attrs;
 }
 function isInHmrContext(instance) {
-  while (instance) {
-    if (instance.type.__hmrId)
-      return true;
-    instance = instance.parent;
-  }
 }
 function updateProps(instance, rawProps, rawPrevProps, optimized) {
   const {
@@ -4950,7 +3297,7 @@ function updateProps(instance, rawProps, rawPrevProps, optimized) {
     // always force full diff in dev
     // - #1942 if hmr is enabled with sfc component
     // - vite#872 non-sfc component used by sfc component
-    !isInHmrContext(instance) && (optimized || patchFlag > 0) && !(patchFlag & 16)
+    !isInHmrContext() && (optimized || patchFlag > 0) && !(patchFlag & 16)
   ) {
     if (patchFlag & 8) {
       const propsToUpdate = instance.vnode.dynamicProps;
@@ -4968,7 +3315,7 @@ function updateProps(instance, rawProps, rawPrevProps, optimized) {
             }
           } else {
             const camelizedKey = camelize(key);
-            props[camelizedKey] = resolvePropValue(
+            props[camelizedKey] = resolvePropValue$1(
               options,
               rawCurrentProps,
               camelizedKey,
@@ -4999,7 +3346,7 @@ function updateProps(instance, rawProps, rawPrevProps, optimized) {
           if (rawPrevProps && // for camelCase
           (rawPrevProps[key] !== void 0 || // for kebab-case
           rawPrevProps[kebabKey] !== void 0)) {
-            props[key] = resolvePropValue(
+            props[key] = resolvePropValue$1(
               options,
               rawCurrentProps,
               key,
@@ -5059,7 +3406,7 @@ function setFullProps(instance, rawProps, props, attrs) {
     const castValues = rawCastValues || EMPTY_OBJ;
     for (let i = 0; i < needCastKeys.length; i++) {
       const key = needCastKeys[i];
-      props[key] = resolvePropValue(
+      props[key] = resolvePropValue$1(
         options,
         rawCurrentProps,
         key,
@@ -5071,7 +3418,7 @@ function setFullProps(instance, rawProps, props, attrs) {
   }
   return hasAttrsChanged;
 }
-function resolvePropValue(options, props, key, value, instance, isAbsent) {
+function resolvePropValue$1(options, props, key, value, instance, isAbsent) {
   const opt = options[key];
   if (opt != null) {
     const hasDefault = hasOwn(opt, "default");
@@ -5194,7 +3541,7 @@ function validatePropName(key) {
   }
   return false;
 }
-function getType(ctor) {
+function getType$1(ctor) {
   if (ctor === null) {
     return "null";
   }
@@ -5207,7 +3554,7 @@ function getType(ctor) {
   return "";
 }
 function isSameType(a, b) {
-  return getType(a) === getType(b);
+  return getType$1(a) === getType$1(b);
 }
 function getTypeIndex(type, expectedTypes) {
   if (isArray(expectedTypes)) {
@@ -5224,7 +3571,7 @@ function validateProps(rawProps, props, instance) {
     let opt = options[key];
     if (opt == null)
       continue;
-    validateProp(
+    validateProp$1(
       key,
       resolvedValues[key],
       opt,
@@ -5233,7 +3580,7 @@ function validateProps(rawProps, props, instance) {
     );
   }
 }
-function validateProp(name, value, prop, props, isAbsent) {
+function validateProp$1(name, value, prop, props, isAbsent) {
   const { type, required, validator, skipCheck } = prop;
   if (required && isAbsent) {
     warn$1('Missing required prop: "' + name + '"');
@@ -5247,12 +3594,12 @@ function validateProp(name, value, prop, props, isAbsent) {
     const types = isArray(type) ? type : [type];
     const expectedTypes = [];
     for (let i = 0; i < types.length && !isValid; i++) {
-      const { valid, expectedType } = assertType(value, types[i]);
+      const { valid, expectedType } = assertType$1(value, types[i]);
       expectedTypes.push(expectedType || "");
       isValid = valid;
     }
     if (!isValid) {
-      warn$1(getInvalidTypeMessage(name, value, expectedTypes));
+      warn$1(getInvalidTypeMessage$1(name, value, expectedTypes));
       return;
     }
   }
@@ -5260,13 +3607,13 @@ function validateProp(name, value, prop, props, isAbsent) {
     warn$1('Invalid prop: custom validator check failed for prop "' + name + '".');
   }
 }
-const isSimpleType = /* @__PURE__ */ makeMap(
+const isSimpleType$1 = /* @__PURE__ */ makeMap(
   "String,Number,Boolean,Function,Symbol,BigInt"
 );
-function assertType(value, type) {
+function assertType$1(value, type) {
   let valid;
-  const expectedType = getType(type);
-  if (isSimpleType(expectedType)) {
+  const expectedType = getType$1(type);
+  if (isSimpleType$1(expectedType)) {
     const t2 = typeof value;
     valid = t2 === expectedType.toLowerCase();
     if (!valid && t2 === "object") {
@@ -5286,25 +3633,25 @@ function assertType(value, type) {
     expectedType
   };
 }
-function getInvalidTypeMessage(name, value, expectedTypes) {
+function getInvalidTypeMessage$1(name, value, expectedTypes) {
   if (expectedTypes.length === 0) {
     return `Prop type [] for prop "${name}" won't match anything. Did you mean to use type Array instead?`;
   }
   let message = `Invalid prop: type check failed for prop "${name}". Expected ${expectedTypes.map(capitalize).join(" | ")}`;
   const expectedType = expectedTypes[0];
   const receivedType = toRawType(value);
-  const expectedValue = styleValue(value, expectedType);
-  const receivedValue = styleValue(value, receivedType);
-  if (expectedTypes.length === 1 && isExplicable(expectedType) && !isBoolean(expectedType, receivedType)) {
+  const expectedValue = styleValue$1(value, expectedType);
+  const receivedValue = styleValue$1(value, receivedType);
+  if (expectedTypes.length === 1 && isExplicable$1(expectedType) && !isBoolean$1(expectedType, receivedType)) {
     message += ` with value ${expectedValue}`;
   }
   message += `, got ${receivedType} `;
-  if (isExplicable(receivedType)) {
+  if (isExplicable$1(receivedType)) {
     message += `with value ${receivedValue}.`;
   }
   return message;
 }
-function styleValue(value, type) {
+function styleValue$1(value, type) {
   if (type === "String") {
     return `"${value}"`;
   } else if (type === "Number") {
@@ -5313,11 +3660,11 @@ function styleValue(value, type) {
     return `${value}`;
   }
 }
-function isExplicable(type) {
+function isExplicable$1(type) {
   const explicitTypes = ["string", "number", "boolean"];
   return explicitTypes.some((elem) => type.toLowerCase() === elem);
 }
-function isBoolean(...args) {
+function isBoolean$1(...args) {
   return args.some((elem) => elem.toLowerCase() === "boolean");
 }
 let supported;
@@ -5446,7 +3793,12 @@ function createComponentInstance(vnode, parent, suspense) {
     rtg: null,
     rtc: null,
     ec: null,
-    sp: null
+    sp: null,
+    // fixed by xxxxxx 用于存储uni-app的元素缓存
+    $uniElements: /* @__PURE__ */ new Map(),
+    $templateUniElementRefs: [],
+    $templateUniElementStyles: {},
+    $eS: {}
   };
   {
     instance.ctx = createDevRenderContext(instance);
@@ -5860,7 +4212,7 @@ function setResult(result, k, v) {
   result[k] = v;
 }
 function hasComponentEffect(instance) {
-  return queue.includes(instance.update);
+  return queue$1.includes(instance.update);
 }
 function flushCallbacks(instance) {
   const ctx = instance.ctx;
@@ -5943,6 +4295,7 @@ function patch(instance, data, oldData) {
     return;
   }
   data = deepCopy(data);
+  data.$eS = instance.$eS || {};
   const ctx = instance.ctx;
   const mpType = ctx.mpType;
   if (mpType === "page" || mpType === "component") {
@@ -5990,21 +4343,29 @@ function setRef$1(instance, isUnmount = false) {
   const {
     setupState,
     $templateRefs,
+    $templateUniElementRefs,
     ctx: { $scope, $mpPlatform }
   } = instance;
   if ($mpPlatform === "mp-alipay") {
     return;
   }
-  if (!$templateRefs || !$scope) {
+  if (!$scope || !$templateRefs && !$templateUniElementRefs) {
     return;
   }
   if (isUnmount) {
-    return $templateRefs.forEach(
+    $templateRefs && $templateRefs.forEach(
       (templateRef) => setTemplateRef(templateRef, null, setupState)
     );
+    $templateUniElementRefs && $templateUniElementRefs.forEach(
+      (templateRef) => setTemplateRef(templateRef, null, setupState)
+    );
+    return;
   }
   const check = $mpPlatform === "mp-baidu" || $mpPlatform === "mp-toutiao";
   const doSetByRefs = (refs) => {
+    if (refs.length === 0) {
+      return [];
+    }
     const mpComponents = (
       // 字节小程序 selectAllComponents 可能返回 null
       // https://github.com/dcloudio/uni-app/issues/3954
@@ -6022,13 +4383,28 @@ function setRef$1(instance, isUnmount = false) {
     });
   };
   const doSet = () => {
-    const refs = doSetByRefs($templateRefs);
-    if (refs.length && instance.proxy && instance.proxy.$scope) {
-      instance.proxy.$scope.setData({ r1: 1 }, () => {
-        doSetByRefs(refs);
-      });
+    if ($templateRefs) {
+      const refs = doSetByRefs($templateRefs);
+      if (refs.length && instance.proxy && instance.proxy.$scope) {
+        instance.proxy.$scope.setData({ r1: 1 }, () => {
+          doSetByRefs(refs);
+        });
+      }
     }
   };
+  if ($templateUniElementRefs && $templateUniElementRefs.length) {
+    nextTick(instance, () => {
+      $templateUniElementRefs.forEach((templateRef) => {
+        if (isArray(templateRef.v)) {
+          templateRef.v.forEach((v) => {
+            setTemplateRef(templateRef, v, setupState);
+          });
+        } else {
+          setTemplateRef(templateRef, templateRef.v, setupState);
+        }
+      });
+    });
+  }
   if ($scope._$setRef) {
     $scope._$setRef(doSet);
   } else {
@@ -6074,7 +4450,9 @@ function setTemplateRef({ r: r2, f: f2 }, refValue, setupState) {
           if (!refValue) {
             return;
           }
-          onBeforeUnmount(() => remove(existing, refValue), refValue.$);
+          if (refValue.$) {
+            onBeforeUnmount(() => remove(existing, refValue), refValue.$);
+          }
         }
       } else if (_isString) {
         if (hasOwn(setupState, r2)) {
@@ -6164,7 +4542,10 @@ function renderComponentRoot(instance) {
     },
     inheritAttrs
   } = instance;
+  instance.$uniElementIds = /* @__PURE__ */ new Map();
   instance.$templateRefs = [];
+  instance.$templateUniElementRefs = [];
+  instance.$templateUniElementStyles = {};
   instance.$ei = 0;
   pruneComponentPropsCache2(uid2);
   instance.__counter = instance.__counter === 0 ? 1 : 0;
@@ -6309,7 +4690,7 @@ function setupRenderEffect(instance) {
       }
     }
   };
-  const effect2 = instance.effect = new ReactiveEffect2(
+  const effect2 = instance.effect = new ReactiveEffect(
     componentUpdateFn,
     NOOP,
     () => queueJob(update),
@@ -6328,12 +4709,25 @@ function setupRenderEffect(instance) {
     effect2.onTrigger = instance.rtg ? (e2) => invokeArrayFns$1(instance.rtg, e2) : void 0;
     update.ownerInstance = instance;
   }
-  update();
+  {
+    update();
+  }
 }
 function unmountComponent(instance) {
   const { bum, scope, update, um } = instance;
   if (bum) {
     invokeArrayFns$1(bum);
+  }
+  {
+    const parentInstance = instance.parent;
+    if (parentInstance) {
+      const $children = parentInstance.ctx.$children;
+      const target = getExposeProxy(instance) || instance.proxy;
+      const index2 = $children.indexOf(target);
+      if (index2 > -1) {
+        $children.splice(index2, 1);
+      }
+    }
   }
   scope.stop();
   if (update) {
@@ -6465,16 +4859,21 @@ function $callMethod(method, ...args) {
   return null;
 }
 function createErrorHandler(app) {
-  return function errorHandler(err, instance, _info) {
-    if (!instance) {
-      throw err;
+  const userErrorHandler = app.config.errorHandler;
+  return function errorHandler(err, instance, info) {
+    if (userErrorHandler) {
+      userErrorHandler(err, instance, info);
     }
     const appInstance = app._instance;
     if (!appInstance || !appInstance.proxy) {
       throw err;
     }
-    {
-      appInstance.proxy.$callHook(ON_ERROR, err);
+    if (appInstance[ON_ERROR]) {
+      {
+        appInstance.proxy.$callHook(ON_ERROR, err);
+      }
+    } else {
+      logError(err, info, instance ? instance.$.vnode : null, false);
     }
   };
 }
@@ -6552,7 +4951,7 @@ function uniIdMixin(globalProperties) {
   };
 }
 function initApp(app) {
-  const appConfig = app._context.config;
+  const appConfig = app.config;
   appConfig.errorHandler = invokeCreateErrorHandler(app, createErrorHandler);
   initOptionMergeStrategies(appConfig.optionMergeStrategies);
   const globalProperties = appConfig.globalProperties;
@@ -6609,6 +5008,22 @@ function getCreateApp() {
     return my[method];
   }
 }
+function stringifyStyle(value) {
+  if (isString(value)) {
+    return value;
+  }
+  return stringify(normalizeStyle(value));
+}
+function stringify(styles) {
+  let ret = "";
+  if (!styles || isString(styles)) {
+    return ret;
+  }
+  for (const key in styles) {
+    ret += `${key.startsWith(`--`) ? key : hyphenate(key)}:${styles[key]};`;
+  }
+  return ret;
+}
 function vOn(value, key) {
   const instance = getCurrentInstance();
   const ctx = instance.ctx;
@@ -6631,6 +5046,11 @@ function createInvoker(initialValue, instance) {
   const invoker = (e2) => {
     patchMPEvent(e2);
     let args = [e2];
+    if (instance && instance.ctx.$getTriggerEventDetail) {
+      if (typeof e2.detail === "number") {
+        e2.detail = instance.ctx.$getTriggerEventDetail(e2.detail);
+      }
+    }
     if (e2.detail && e2.detail.__args__) {
       args = e2.detail.__args__;
     }
@@ -6666,7 +5086,7 @@ const bubbles = [
   "animationend",
   "touchforcechange"
 ];
-function patchMPEvent(event) {
+function patchMPEvent(event, instance) {
   if (event.type && event.target) {
     event.preventDefault = NOOP;
     event.stopPropagation = NOOP;
@@ -6730,22 +5150,6 @@ function vFor(source, renderItem) {
   }
   return ret;
 }
-function stringifyStyle(value) {
-  if (isString(value)) {
-    return value;
-  }
-  return stringify(normalizeStyle(value));
-}
-function stringify(styles) {
-  let ret = "";
-  if (!styles || isString(styles)) {
-    return ret;
-  }
-  for (const key in styles) {
-    ret += `${key.startsWith(`--`) ? key : hyphenate(key)}:${styles[key]};`;
-  }
-  return ret;
-}
 const o = (value, key) => vOn(value, key);
 const f = (source, renderItem) => vFor(source, renderItem);
 const s = (value) => stringifyStyle(value);
@@ -6756,6 +5160,1818 @@ function createApp$1(rootComponent, rootProps = null) {
   return createVueApp(rootComponent, rootProps).use(plugin);
 }
 const createSSRApp = createApp$1;
+function validateProtocolFail(name, msg) {
+  console.warn(`${name}: ${msg}`);
+}
+function validateProtocol(name, data, protocol, onFail) {
+  if (!onFail) {
+    onFail = validateProtocolFail;
+  }
+  for (const key in protocol) {
+    const errMsg = validateProp(key, data[key], protocol[key], !hasOwn(data, key));
+    if (isString(errMsg)) {
+      onFail(name, errMsg);
+    }
+  }
+}
+function validateProtocols(name, args, protocol, onFail) {
+  if (!protocol) {
+    return;
+  }
+  if (!isArray(protocol)) {
+    return validateProtocol(name, args[0] || /* @__PURE__ */ Object.create(null), protocol, onFail);
+  }
+  const len = protocol.length;
+  const argsLen = args.length;
+  for (let i = 0; i < len; i++) {
+    const opts = protocol[i];
+    const data = /* @__PURE__ */ Object.create(null);
+    if (argsLen > i) {
+      data[opts.name] = args[i];
+    }
+    validateProtocol(name, data, { [opts.name]: opts }, onFail);
+  }
+}
+function validateProp(name, value, prop, isAbsent) {
+  if (!isPlainObject(prop)) {
+    prop = { type: prop };
+  }
+  const { type, required, validator } = prop;
+  if (required && isAbsent) {
+    return 'Missing required args: "' + name + '"';
+  }
+  if (value == null && !required) {
+    return;
+  }
+  if (type != null) {
+    let isValid = false;
+    const types = isArray(type) ? type : [type];
+    const expectedTypes = [];
+    for (let i = 0; i < types.length && !isValid; i++) {
+      const { valid, expectedType } = assertType(value, types[i]);
+      expectedTypes.push(expectedType || "");
+      isValid = valid;
+    }
+    if (!isValid) {
+      return getInvalidTypeMessage(name, value, expectedTypes);
+    }
+  }
+  if (validator) {
+    return validator(value);
+  }
+}
+const isSimpleType = /* @__PURE__ */ makeMap("String,Number,Boolean,Function,Symbol");
+function assertType(value, type) {
+  let valid;
+  const expectedType = getType(type);
+  if (isSimpleType(expectedType)) {
+    const t2 = typeof value;
+    valid = t2 === expectedType.toLowerCase();
+    if (!valid && t2 === "object") {
+      valid = value instanceof type;
+    }
+  } else if (expectedType === "Object") {
+    valid = isObject(value);
+  } else if (expectedType === "Array") {
+    valid = isArray(value);
+  } else {
+    {
+      valid = value instanceof type;
+    }
+  }
+  return {
+    valid,
+    expectedType
+  };
+}
+function getInvalidTypeMessage(name, value, expectedTypes) {
+  let message = `Invalid args: type check failed for args "${name}". Expected ${expectedTypes.map(capitalize).join(", ")}`;
+  const expectedType = expectedTypes[0];
+  const receivedType = toRawType(value);
+  const expectedValue = styleValue(value, expectedType);
+  const receivedValue = styleValue(value, receivedType);
+  if (expectedTypes.length === 1 && isExplicable(expectedType) && !isBoolean(expectedType, receivedType)) {
+    message += ` with value ${expectedValue}`;
+  }
+  message += `, got ${receivedType} `;
+  if (isExplicable(receivedType)) {
+    message += `with value ${receivedValue}.`;
+  }
+  return message;
+}
+function getType(ctor) {
+  const match = ctor && ctor.toString().match(/^\s*function (\w+)/);
+  return match ? match[1] : "";
+}
+function styleValue(value, type) {
+  if (type === "String") {
+    return `"${value}"`;
+  } else if (type === "Number") {
+    return `${Number(value)}`;
+  } else {
+    return `${value}`;
+  }
+}
+function isExplicable(type) {
+  const explicitTypes = ["string", "number", "boolean"];
+  return explicitTypes.some((elem) => type.toLowerCase() === elem);
+}
+function isBoolean(...args) {
+  return args.some((elem) => elem.toLowerCase() === "boolean");
+}
+function tryCatch(fn) {
+  return function() {
+    try {
+      return fn.apply(fn, arguments);
+    } catch (e2) {
+      console.error(e2);
+    }
+  };
+}
+let invokeCallbackId = 1;
+const invokeCallbacks = {};
+function addInvokeCallback(id, name, callback, keepAlive = false) {
+  invokeCallbacks[id] = {
+    name,
+    keepAlive,
+    callback
+  };
+  return id;
+}
+function invokeCallback(id, res, extras) {
+  if (typeof id === "number") {
+    const opts = invokeCallbacks[id];
+    if (opts) {
+      if (!opts.keepAlive) {
+        delete invokeCallbacks[id];
+      }
+      return opts.callback(res, extras);
+    }
+  }
+  return res;
+}
+const API_SUCCESS = "success";
+const API_FAIL = "fail";
+const API_COMPLETE = "complete";
+function getApiCallbacks(args) {
+  const apiCallbacks = {};
+  for (const name in args) {
+    const fn = args[name];
+    if (isFunction(fn)) {
+      apiCallbacks[name] = tryCatch(fn);
+      delete args[name];
+    }
+  }
+  return apiCallbacks;
+}
+function normalizeErrMsg(errMsg, name) {
+  if (!errMsg || errMsg.indexOf(":fail") === -1) {
+    return name + ":ok";
+  }
+  return name + errMsg.substring(errMsg.indexOf(":fail"));
+}
+function createAsyncApiCallback(name, args = {}, { beforeAll, beforeSuccess } = {}) {
+  if (!isPlainObject(args)) {
+    args = {};
+  }
+  const { success, fail, complete } = getApiCallbacks(args);
+  const hasSuccess = isFunction(success);
+  const hasFail = isFunction(fail);
+  const hasComplete = isFunction(complete);
+  const callbackId = invokeCallbackId++;
+  addInvokeCallback(callbackId, name, (res) => {
+    res = res || {};
+    res.errMsg = normalizeErrMsg(res.errMsg, name);
+    isFunction(beforeAll) && beforeAll(res);
+    if (res.errMsg === name + ":ok") {
+      isFunction(beforeSuccess) && beforeSuccess(res, args);
+      hasSuccess && success(res);
+    } else {
+      hasFail && fail(res);
+    }
+    hasComplete && complete(res);
+  });
+  return callbackId;
+}
+const HOOK_SUCCESS = "success";
+const HOOK_FAIL = "fail";
+const HOOK_COMPLETE = "complete";
+const globalInterceptors = {};
+const scopedInterceptors = {};
+function wrapperHook(hook, params) {
+  return function(data) {
+    return hook(data, params) || data;
+  };
+}
+function queue(hooks, data, params) {
+  let promise = false;
+  for (let i = 0; i < hooks.length; i++) {
+    const hook = hooks[i];
+    if (promise) {
+      promise = Promise.resolve(wrapperHook(hook, params));
+    } else {
+      const res = hook(data, params);
+      if (isPromise(res)) {
+        promise = Promise.resolve(res);
+      }
+      if (res === false) {
+        return {
+          then() {
+          },
+          catch() {
+          }
+        };
+      }
+    }
+  }
+  return promise || {
+    then(callback) {
+      return callback(data);
+    },
+    catch() {
+    }
+  };
+}
+function wrapperOptions(interceptors2, options = {}) {
+  [HOOK_SUCCESS, HOOK_FAIL, HOOK_COMPLETE].forEach((name) => {
+    const hooks = interceptors2[name];
+    if (!isArray(hooks)) {
+      return;
+    }
+    const oldCallback = options[name];
+    options[name] = function callbackInterceptor(res) {
+      queue(hooks, res, options).then((res2) => {
+        return isFunction(oldCallback) && oldCallback(res2) || res2;
+      });
+    };
+  });
+  return options;
+}
+function wrapperReturnValue(method, returnValue) {
+  const returnValueHooks = [];
+  if (isArray(globalInterceptors.returnValue)) {
+    returnValueHooks.push(...globalInterceptors.returnValue);
+  }
+  const interceptor = scopedInterceptors[method];
+  if (interceptor && isArray(interceptor.returnValue)) {
+    returnValueHooks.push(...interceptor.returnValue);
+  }
+  returnValueHooks.forEach((hook) => {
+    returnValue = hook(returnValue) || returnValue;
+  });
+  return returnValue;
+}
+function getApiInterceptorHooks(method) {
+  const interceptor = /* @__PURE__ */ Object.create(null);
+  Object.keys(globalInterceptors).forEach((hook) => {
+    if (hook !== "returnValue") {
+      interceptor[hook] = globalInterceptors[hook].slice();
+    }
+  });
+  const scopedInterceptor = scopedInterceptors[method];
+  if (scopedInterceptor) {
+    Object.keys(scopedInterceptor).forEach((hook) => {
+      if (hook !== "returnValue") {
+        interceptor[hook] = (interceptor[hook] || []).concat(scopedInterceptor[hook]);
+      }
+    });
+  }
+  return interceptor;
+}
+function invokeApi(method, api, options, params) {
+  const interceptor = getApiInterceptorHooks(method);
+  if (interceptor && Object.keys(interceptor).length) {
+    if (isArray(interceptor.invoke)) {
+      const res = queue(interceptor.invoke, options);
+      return res.then((options2) => {
+        return api(wrapperOptions(getApiInterceptorHooks(method), options2), ...params);
+      });
+    } else {
+      return api(wrapperOptions(interceptor, options), ...params);
+    }
+  }
+  return api(options, ...params);
+}
+function hasCallback(args) {
+  if (isPlainObject(args) && [API_SUCCESS, API_FAIL, API_COMPLETE].find((cb) => isFunction(args[cb]))) {
+    return true;
+  }
+  return false;
+}
+function handlePromise(promise) {
+  return promise;
+}
+function promisify$1(name, fn) {
+  return (args = {}, ...rest) => {
+    if (hasCallback(args)) {
+      return wrapperReturnValue(name, invokeApi(name, fn, args, rest));
+    }
+    return wrapperReturnValue(name, handlePromise(new Promise((resolve, reject) => {
+      invokeApi(name, fn, extend(args, { success: resolve, fail: reject }), rest);
+    })));
+  };
+}
+function formatApiArgs(args, options) {
+  args[0];
+  {
+    return;
+  }
+}
+function invokeSuccess(id, name, res) {
+  const result = {
+    errMsg: name + ":ok"
+  };
+  return invokeCallback(id, extend(res || {}, result));
+}
+function invokeFail(id, name, errMsg, errRes = {}) {
+  const errMsgPrefix = name + ":fail";
+  let apiErrMsg = "";
+  if (!errMsg) {
+    apiErrMsg = errMsgPrefix;
+  } else if (errMsg.indexOf(errMsgPrefix) === 0) {
+    apiErrMsg = errMsg;
+  } else {
+    apiErrMsg = errMsgPrefix + " " + errMsg;
+  }
+  {
+    delete errRes.errCode;
+  }
+  let res = extend({ errMsg: apiErrMsg }, errRes);
+  return invokeCallback(id, res);
+}
+function beforeInvokeApi(name, args, protocol, options) {
+  {
+    validateProtocols(name, args, protocol);
+  }
+  const errMsg = formatApiArgs(args);
+  if (errMsg) {
+    return errMsg;
+  }
+}
+function parseErrMsg(errMsg) {
+  if (!errMsg || isString(errMsg)) {
+    return errMsg;
+  }
+  if (errMsg.stack) {
+    if (typeof globalThis === "undefined" || !globalThis.harmonyChannel) {
+      console.error(errMsg.message + "\n" + errMsg.stack);
+    }
+    return errMsg.message;
+  }
+  return errMsg;
+}
+function wrapperTaskApi(name, fn, protocol, options) {
+  return (args) => {
+    const id = createAsyncApiCallback(name, args, options);
+    const errMsg = beforeInvokeApi(name, [args], protocol);
+    if (errMsg) {
+      return invokeFail(id, name, errMsg);
+    }
+    return fn(args, {
+      resolve: (res) => invokeSuccess(id, name, res),
+      reject: (errMsg2, errRes) => invokeFail(id, name, parseErrMsg(errMsg2), errRes)
+    });
+  };
+}
+function wrapperSyncApi(name, fn, protocol, options) {
+  return (...args) => {
+    const errMsg = beforeInvokeApi(name, args, protocol);
+    if (errMsg) {
+      throw new Error(errMsg);
+    }
+    return fn.apply(null, args);
+  };
+}
+function wrapperAsyncApi(name, fn, protocol, options) {
+  return wrapperTaskApi(name, fn, protocol, options);
+}
+function defineSyncApi(name, fn, protocol, options) {
+  return wrapperSyncApi(name, fn, protocol);
+}
+function defineAsyncApi(name, fn, protocol, options) {
+  return promisify$1(name, wrapperAsyncApi(name, fn, protocol, options));
+}
+const API_UPX2PX = "upx2px";
+const Upx2pxProtocol = [
+  {
+    name: "upx",
+    type: [Number, String],
+    required: true
+  }
+];
+const EPS = 1e-4;
+const BASE_DEVICE_WIDTH = 750;
+let isIOS = false;
+let deviceWidth = 0;
+let deviceDPR = 0;
+function checkDeviceWidth() {
+  const { windowWidth, pixelRatio, platform } = Object.assign({}, wx.getWindowInfo(), {
+    platform: wx.getDeviceInfo().platform
+  });
+  deviceWidth = windowWidth;
+  deviceDPR = pixelRatio;
+  isIOS = platform === "ios";
+}
+const upx2px = defineSyncApi(API_UPX2PX, (number, newDeviceWidth) => {
+  if (deviceWidth === 0) {
+    checkDeviceWidth();
+  }
+  number = Number(number);
+  if (number === 0) {
+    return 0;
+  }
+  let width = newDeviceWidth || deviceWidth;
+  let result = number / BASE_DEVICE_WIDTH * width;
+  if (result < 0) {
+    result = -result;
+  }
+  result = Math.floor(result + EPS);
+  if (result === 0) {
+    if (deviceDPR === 1 || !isIOS) {
+      result = 1;
+    } else {
+      result = 0.5;
+    }
+  }
+  return number < 0 ? -result : result;
+}, Upx2pxProtocol);
+function __f__(type, filename, ...args) {
+  if (filename) {
+    args.push(filename);
+  }
+  console[type].apply(console, args);
+}
+const API_ADD_INTERCEPTOR = "addInterceptor";
+const API_REMOVE_INTERCEPTOR = "removeInterceptor";
+const AddInterceptorProtocol = [
+  {
+    name: "method",
+    type: [String, Object],
+    required: true
+  }
+];
+const RemoveInterceptorProtocol = AddInterceptorProtocol;
+function mergeInterceptorHook(interceptors2, interceptor) {
+  Object.keys(interceptor).forEach((hook) => {
+    if (isFunction(interceptor[hook])) {
+      interceptors2[hook] = mergeHook(interceptors2[hook], interceptor[hook]);
+    }
+  });
+}
+function removeInterceptorHook(interceptors2, interceptor) {
+  if (!interceptors2 || !interceptor) {
+    return;
+  }
+  Object.keys(interceptor).forEach((name) => {
+    const hooks = interceptors2[name];
+    const hook = interceptor[name];
+    if (isArray(hooks) && isFunction(hook)) {
+      remove(hooks, hook);
+    }
+  });
+}
+function mergeHook(parentVal, childVal) {
+  const res = childVal ? parentVal ? parentVal.concat(childVal) : isArray(childVal) ? childVal : [childVal] : parentVal;
+  return res ? dedupeHooks(res) : res;
+}
+function dedupeHooks(hooks) {
+  const res = [];
+  for (let i = 0; i < hooks.length; i++) {
+    if (res.indexOf(hooks[i]) === -1) {
+      res.push(hooks[i]);
+    }
+  }
+  return res;
+}
+const addInterceptor = defineSyncApi(API_ADD_INTERCEPTOR, (method, interceptor) => {
+  if (isString(method) && isPlainObject(interceptor)) {
+    mergeInterceptorHook(scopedInterceptors[method] || (scopedInterceptors[method] = {}), interceptor);
+  } else if (isPlainObject(method)) {
+    mergeInterceptorHook(globalInterceptors, method);
+  }
+}, AddInterceptorProtocol);
+const removeInterceptor = defineSyncApi(API_REMOVE_INTERCEPTOR, (method, interceptor) => {
+  if (isString(method)) {
+    if (isPlainObject(interceptor)) {
+      removeInterceptorHook(scopedInterceptors[method], interceptor);
+    } else {
+      delete scopedInterceptors[method];
+    }
+  } else if (isPlainObject(method)) {
+    removeInterceptorHook(globalInterceptors, method);
+  }
+}, RemoveInterceptorProtocol);
+const interceptors = {};
+const API_ON = "$on";
+const OnProtocol = [
+  {
+    name: "event",
+    type: String,
+    required: true
+  },
+  {
+    name: "callback",
+    type: Function,
+    required: true
+  }
+];
+const API_ONCE = "$once";
+const OnceProtocol = OnProtocol;
+const API_OFF = "$off";
+const OffProtocol = [
+  {
+    name: "event",
+    type: [String, Array]
+  },
+  {
+    name: "callback",
+    type: [Function, Number]
+  }
+];
+const API_EMIT = "$emit";
+const EmitProtocol = [
+  {
+    name: "event",
+    type: String,
+    required: true
+  }
+];
+class EventBus {
+  constructor() {
+    this.$emitter = new E$1();
+  }
+  on(name, callback) {
+    return this.$emitter.on(name, callback);
+  }
+  once(name, callback) {
+    return this.$emitter.once(name, callback);
+  }
+  off(name, callback) {
+    if (!name) {
+      this.$emitter.e = {};
+      return;
+    }
+    this.$emitter.off(name, callback);
+  }
+  emit(name, ...args) {
+    this.$emitter.emit(name, ...args);
+  }
+}
+const eventBus = new EventBus();
+const $on = defineSyncApi(API_ON, (name, callback) => {
+  eventBus.on(name, callback);
+  return () => eventBus.off(name, callback);
+}, OnProtocol);
+const $once = defineSyncApi(API_ONCE, (name, callback) => {
+  eventBus.once(name, callback);
+  return () => eventBus.off(name, callback);
+}, OnceProtocol);
+const $off = defineSyncApi(API_OFF, (name, callback) => {
+  if (!isArray(name))
+    name = name ? [name] : [];
+  name.forEach((n) => eventBus.off(n, callback));
+}, OffProtocol);
+const $emit = defineSyncApi(API_EMIT, (name, ...args) => {
+  eventBus.emit(name, ...args);
+}, EmitProtocol);
+let cid;
+let cidErrMsg;
+let enabled;
+function normalizePushMessage(message) {
+  try {
+    return JSON.parse(message);
+  } catch (e2) {
+  }
+  return message;
+}
+function invokePushCallback(args) {
+  if (args.type === "enabled") {
+    enabled = true;
+  } else if (args.type === "clientId") {
+    cid = args.cid;
+    cidErrMsg = args.errMsg;
+    invokeGetPushCidCallbacks(cid, args.errMsg);
+  } else if (args.type === "pushMsg") {
+    const message = {
+      type: "receive",
+      data: normalizePushMessage(args.message)
+    };
+    for (let i = 0; i < onPushMessageCallbacks.length; i++) {
+      const callback = onPushMessageCallbacks[i];
+      callback(message);
+      if (message.stopped) {
+        break;
+      }
+    }
+  } else if (args.type === "click") {
+    onPushMessageCallbacks.forEach((callback) => {
+      callback({
+        type: "click",
+        data: normalizePushMessage(args.message)
+      });
+    });
+  }
+}
+const getPushCidCallbacks = [];
+function invokeGetPushCidCallbacks(cid2, errMsg) {
+  getPushCidCallbacks.forEach((callback) => {
+    callback(cid2, errMsg);
+  });
+  getPushCidCallbacks.length = 0;
+}
+const API_GET_PUSH_CLIENT_ID = "getPushClientId";
+const getPushClientId = defineAsyncApi(API_GET_PUSH_CLIENT_ID, (_, { resolve, reject }) => {
+  Promise.resolve().then(() => {
+    if (typeof enabled === "undefined") {
+      enabled = false;
+      cid = "";
+      cidErrMsg = "uniPush is not enabled";
+    }
+    getPushCidCallbacks.push((cid2, errMsg) => {
+      if (cid2) {
+        resolve({ cid: cid2 });
+      } else {
+        reject(errMsg);
+      }
+    });
+    if (typeof cid !== "undefined") {
+      invokeGetPushCidCallbacks(cid, cidErrMsg);
+    }
+  });
+});
+const onPushMessageCallbacks = [];
+const onPushMessage = (fn) => {
+  if (onPushMessageCallbacks.indexOf(fn) === -1) {
+    onPushMessageCallbacks.push(fn);
+  }
+};
+const offPushMessage = (fn) => {
+  if (!fn) {
+    onPushMessageCallbacks.length = 0;
+  } else {
+    const index2 = onPushMessageCallbacks.indexOf(fn);
+    if (index2 > -1) {
+      onPushMessageCallbacks.splice(index2, 1);
+    }
+  }
+};
+const SYNC_API_RE = /^\$|__f__|getLocale|setLocale|sendNativeEvent|restoreGlobal|requireGlobal|getCurrentSubNVue|getMenuButtonBoundingClientRect|^report|interceptors|Interceptor$|getSubNVueById|requireNativePlugin|upx2px|rpx2px|hideKeyboard|canIUse|^create|Sync$|Manager$|base64ToArrayBuffer|arrayBufferToBase64|getDeviceInfo|getAppBaseInfo|getWindowInfo|getSystemSetting|getAppAuthorizeSetting/;
+const CONTEXT_API_RE = /^create|Manager$/;
+const CONTEXT_API_RE_EXC = ["createBLEConnection"];
+const TASK_APIS = ["request", "downloadFile", "uploadFile", "connectSocket"];
+const ASYNC_API = ["createBLEConnection"];
+const CALLBACK_API_RE = /^on|^off/;
+function isContextApi(name) {
+  return CONTEXT_API_RE.test(name) && CONTEXT_API_RE_EXC.indexOf(name) === -1;
+}
+function isSyncApi(name) {
+  return SYNC_API_RE.test(name) && ASYNC_API.indexOf(name) === -1;
+}
+function isCallbackApi(name) {
+  return CALLBACK_API_RE.test(name) && name !== "onPush";
+}
+function isTaskApi(name) {
+  return TASK_APIS.indexOf(name) !== -1;
+}
+function shouldPromise(name) {
+  if (isContextApi(name) || isSyncApi(name) || isCallbackApi(name)) {
+    return false;
+  }
+  return true;
+}
+if (!Promise.prototype.finally) {
+  Promise.prototype.finally = function(onfinally) {
+    const promise = this.constructor;
+    return this.then((value) => promise.resolve(onfinally && onfinally()).then(() => value), (reason) => promise.resolve(onfinally && onfinally()).then(() => {
+      throw reason;
+    }));
+  };
+}
+function promisify(name, api) {
+  if (!shouldPromise(name)) {
+    return api;
+  }
+  if (!isFunction(api)) {
+    return api;
+  }
+  return function promiseApi(options = {}, ...rest) {
+    if (isFunction(options.success) || isFunction(options.fail) || isFunction(options.complete)) {
+      return wrapperReturnValue(name, invokeApi(name, api, options, rest));
+    }
+    return wrapperReturnValue(name, handlePromise(new Promise((resolve, reject) => {
+      invokeApi(name, api, extend({}, options, {
+        success: resolve,
+        fail: reject
+      }), rest);
+    })));
+  };
+}
+const CALLBACKS = ["success", "fail", "cancel", "complete"];
+function initWrapper(protocols2) {
+  function processCallback(methodName, method, returnValue) {
+    return function(res) {
+      return method(processReturnValue(methodName, res, returnValue));
+    };
+  }
+  function processArgs(methodName, fromArgs, argsOption = {}, returnValue = {}, keepFromArgs = false) {
+    if (isPlainObject(fromArgs)) {
+      const toArgs = keepFromArgs === true ? fromArgs : {};
+      if (isFunction(argsOption)) {
+        argsOption = argsOption(fromArgs, toArgs) || {};
+      }
+      for (const key in fromArgs) {
+        if (hasOwn(argsOption, key)) {
+          let keyOption = argsOption[key];
+          if (isFunction(keyOption)) {
+            keyOption = keyOption(fromArgs[key], fromArgs, toArgs);
+          }
+          if (!keyOption) {
+            console.warn(`微信小程序 ${methodName} 暂不支持 ${key}`);
+          } else if (isString(keyOption)) {
+            toArgs[keyOption] = fromArgs[key];
+          } else if (isPlainObject(keyOption)) {
+            toArgs[keyOption.name ? keyOption.name : key] = keyOption.value;
+          }
+        } else if (CALLBACKS.indexOf(key) !== -1) {
+          const callback = fromArgs[key];
+          if (isFunction(callback)) {
+            toArgs[key] = processCallback(methodName, callback, returnValue);
+          }
+        } else {
+          if (!keepFromArgs && !hasOwn(toArgs, key)) {
+            toArgs[key] = fromArgs[key];
+          }
+        }
+      }
+      return toArgs;
+    } else if (isFunction(fromArgs)) {
+      if (isFunction(argsOption)) {
+        argsOption(fromArgs, {});
+      }
+      fromArgs = processCallback(methodName, fromArgs, returnValue);
+    }
+    return fromArgs;
+  }
+  function processReturnValue(methodName, res, returnValue, keepReturnValue = false) {
+    if (isFunction(protocols2.returnValue)) {
+      res = protocols2.returnValue(methodName, res);
+    }
+    const realKeepReturnValue = keepReturnValue || false;
+    return processArgs(methodName, res, returnValue, {}, realKeepReturnValue);
+  }
+  return function wrapper(methodName, method) {
+    if ((isContextApi(methodName) || isTaskApi(methodName)) && method) {
+      const oldMethod = method;
+      method = function(...args) {
+        const contextOrTask = oldMethod.apply(this, args);
+        if (contextOrTask) {
+          contextOrTask.__v_skip = true;
+        }
+        return contextOrTask;
+      };
+    }
+    if (!hasOwn(protocols2, methodName) && !isFunction(protocols2.returnValue) || !isFunction(method)) {
+      return method;
+    }
+    const protocol = protocols2[methodName];
+    if (!protocol && !isFunction(protocols2.returnValue)) {
+      return function() {
+        console.error(`微信小程序 暂不支持${methodName}`);
+      };
+    }
+    return function(arg1, arg2) {
+      let options = protocol || {};
+      if (isFunction(protocol)) {
+        options = protocol(arg1);
+      }
+      arg1 = processArgs(methodName, arg1, options.args, options.returnValue);
+      const args = [arg1];
+      if (typeof arg2 !== "undefined") {
+        args.push(arg2);
+      }
+      const returnValue = wx[options.name || methodName].apply(wx, args);
+      if (isContextApi(methodName) || isTaskApi(methodName)) {
+        if (returnValue && !returnValue.__v_skip) {
+          returnValue.__v_skip = true;
+        }
+      }
+      if (isSyncApi(methodName)) {
+        return processReturnValue(methodName, returnValue, options.returnValue, isContextApi(methodName));
+      }
+      return returnValue;
+    };
+  };
+}
+const getLocale = () => {
+  const app = isFunction(getApp) && getApp({ allowDefault: true });
+  if (app && app.$vm) {
+    return app.$vm.$locale;
+  }
+  return normalizeLocale(wx.getAppBaseInfo().language) || LOCALE_EN;
+};
+const setLocale = (locale) => {
+  const app = isFunction(getApp) && getApp();
+  if (!app) {
+    return false;
+  }
+  const oldLocale = app.$vm.$locale;
+  if (oldLocale !== locale) {
+    app.$vm.$locale = locale;
+    onLocaleChangeCallbacks.forEach((fn) => fn({ locale }));
+    return true;
+  }
+  return false;
+};
+const onLocaleChangeCallbacks = [];
+const onLocaleChange = (fn) => {
+  if (onLocaleChangeCallbacks.indexOf(fn) === -1) {
+    onLocaleChangeCallbacks.push(fn);
+  }
+};
+if (typeof global !== "undefined") {
+  global.getLocale = getLocale;
+}
+const UUID_KEY = "__DC_STAT_UUID";
+let deviceId;
+function useDeviceId(global2 = wx) {
+  return function addDeviceId(_, toRes) {
+    deviceId = deviceId || global2.getStorageSync(UUID_KEY);
+    if (!deviceId) {
+      deviceId = Date.now() + "" + Math.floor(Math.random() * 1e7);
+      wx.setStorage({
+        key: UUID_KEY,
+        data: deviceId
+      });
+    }
+    toRes.deviceId = deviceId;
+  };
+}
+function addSafeAreaInsets(fromRes, toRes) {
+  if (fromRes.safeArea) {
+    const safeArea = fromRes.safeArea;
+    toRes.safeAreaInsets = {
+      top: safeArea.top,
+      left: safeArea.left,
+      right: fromRes.windowWidth - safeArea.right,
+      bottom: fromRes.screenHeight - safeArea.bottom
+    };
+  }
+}
+function getOSInfo(system, platform) {
+  let osName = "";
+  let osVersion = "";
+  if (platform && false) {
+    osName = platform;
+    osVersion = system;
+  } else {
+    osName = system.split(" ")[0] || "";
+    osVersion = system.split(" ")[1] || "";
+  }
+  return {
+    osName: osName.toLocaleLowerCase(),
+    osVersion
+  };
+}
+function populateParameters(fromRes, toRes) {
+  const { brand = "", model = "", system = "", language = "", theme, version: version2, platform, fontSizeSetting, SDKVersion, pixelRatio, deviceOrientation } = fromRes;
+  const { osName, osVersion } = getOSInfo(system, platform);
+  let hostVersion = version2;
+  let deviceType = getGetDeviceType(fromRes, model);
+  let deviceBrand = getDeviceBrand(brand);
+  let _hostName = getHostName(fromRes);
+  let _deviceOrientation = deviceOrientation;
+  let _devicePixelRatio = pixelRatio;
+  let _SDKVersion = SDKVersion;
+  const hostLanguage = (language || "").replace(/_/g, "-");
+  const parameters = {
+    appId: "__UNI__FC2B806",
+    appName: "gpt",
+    appVersion: "1.0.0",
+    appVersionCode: "100",
+    appLanguage: getAppLanguage(hostLanguage),
+    uniCompileVersion: "4.44",
+    uniCompilerVersion: "4.44",
+    uniRuntimeVersion: "4.44",
+    uniPlatform: "mp-weixin",
+    deviceBrand,
+    deviceModel: model,
+    deviceType,
+    devicePixelRatio: _devicePixelRatio,
+    deviceOrientation: _deviceOrientation,
+    osName,
+    osVersion,
+    hostTheme: theme,
+    hostVersion,
+    hostLanguage,
+    hostName: _hostName,
+    hostSDKVersion: _SDKVersion,
+    hostFontSizeSetting: fontSizeSetting,
+    windowTop: 0,
+    windowBottom: 0,
+    // TODO
+    osLanguage: void 0,
+    osTheme: void 0,
+    ua: void 0,
+    hostPackageName: void 0,
+    browserName: void 0,
+    browserVersion: void 0,
+    isUniAppX: false
+  };
+  extend(toRes, parameters);
+}
+function getGetDeviceType(fromRes, model) {
+  let deviceType = fromRes.deviceType || "phone";
+  {
+    const deviceTypeMaps = {
+      ipad: "pad",
+      windows: "pc",
+      mac: "pc"
+    };
+    const deviceTypeMapsKeys = Object.keys(deviceTypeMaps);
+    const _model = model.toLocaleLowerCase();
+    for (let index2 = 0; index2 < deviceTypeMapsKeys.length; index2++) {
+      const _m = deviceTypeMapsKeys[index2];
+      if (_model.indexOf(_m) !== -1) {
+        deviceType = deviceTypeMaps[_m];
+        break;
+      }
+    }
+  }
+  return deviceType;
+}
+function getDeviceBrand(brand) {
+  let deviceBrand = brand;
+  if (deviceBrand) {
+    deviceBrand = deviceBrand.toLocaleLowerCase();
+  }
+  return deviceBrand;
+}
+function getAppLanguage(defaultLanguage) {
+  return getLocale ? getLocale() : defaultLanguage;
+}
+function getHostName(fromRes) {
+  const _platform = "WeChat";
+  let _hostName = fromRes.hostName || _platform;
+  {
+    if (fromRes.environment) {
+      _hostName = fromRes.environment;
+    } else if (fromRes.host && fromRes.host.env) {
+      _hostName = fromRes.host.env;
+    }
+  }
+  return _hostName;
+}
+const getSystemInfo = {
+  returnValue: (fromRes, toRes) => {
+    addSafeAreaInsets(fromRes, toRes);
+    useDeviceId()(fromRes, toRes);
+    populateParameters(fromRes, toRes);
+  }
+};
+const getSystemInfoSync = getSystemInfo;
+const redirectTo = {};
+const previewImage = {
+  args(fromArgs, toArgs) {
+    let currentIndex = parseInt(fromArgs.current);
+    if (isNaN(currentIndex)) {
+      return;
+    }
+    const urls = fromArgs.urls;
+    if (!isArray(urls)) {
+      return;
+    }
+    const len = urls.length;
+    if (!len) {
+      return;
+    }
+    if (currentIndex < 0) {
+      currentIndex = 0;
+    } else if (currentIndex >= len) {
+      currentIndex = len - 1;
+    }
+    if (currentIndex > 0) {
+      toArgs.current = urls[currentIndex];
+      toArgs.urls = urls.filter((item, index2) => index2 < currentIndex ? item !== urls[currentIndex] : true);
+    } else {
+      toArgs.current = urls[0];
+    }
+    return {
+      indicator: false,
+      loop: false
+    };
+  }
+};
+const showActionSheet = {
+  args(fromArgs, toArgs) {
+    toArgs.alertText = fromArgs.title;
+  }
+};
+const getDeviceInfo = {
+  returnValue: (fromRes, toRes) => {
+    const { brand, model, system = "", platform = "" } = fromRes;
+    let deviceType = getGetDeviceType(fromRes, model);
+    let deviceBrand = getDeviceBrand(brand);
+    useDeviceId()(fromRes, toRes);
+    const { osName, osVersion } = getOSInfo(system, platform);
+    toRes = sortObject(extend(toRes, {
+      deviceType,
+      deviceBrand,
+      deviceModel: model,
+      osName,
+      osVersion
+    }));
+  }
+};
+const getAppBaseInfo = {
+  returnValue: (fromRes, toRes) => {
+    const { version: version2, language, SDKVersion, theme } = fromRes;
+    let _hostName = getHostName(fromRes);
+    let hostLanguage = (language || "").replace(/_/g, "-");
+    const parameters = {
+      hostVersion: version2,
+      hostLanguage,
+      hostName: _hostName,
+      hostSDKVersion: SDKVersion,
+      hostTheme: theme,
+      appId: "__UNI__FC2B806",
+      appName: "gpt",
+      appVersion: "1.0.0",
+      appVersionCode: "100",
+      appLanguage: getAppLanguage(hostLanguage),
+      isUniAppX: false,
+      uniPlatform: "mp-weixin",
+      uniCompileVersion: "4.44",
+      uniCompilerVersion: "4.44",
+      uniRuntimeVersion: "4.44"
+    };
+    extend(toRes, parameters);
+  }
+};
+const getWindowInfo = {
+  returnValue: (fromRes, toRes) => {
+    addSafeAreaInsets(fromRes, toRes);
+    toRes = sortObject(extend(toRes, {
+      windowTop: 0,
+      windowBottom: 0
+    }));
+  }
+};
+const getAppAuthorizeSetting = {
+  returnValue: function(fromRes, toRes) {
+    const { locationReducedAccuracy } = fromRes;
+    toRes.locationAccuracy = "unsupported";
+    if (locationReducedAccuracy === true) {
+      toRes.locationAccuracy = "reduced";
+    } else if (locationReducedAccuracy === false) {
+      toRes.locationAccuracy = "full";
+    }
+  }
+};
+const onError = {
+  args(fromArgs) {
+    const app = getApp({ allowDefault: true }) || {};
+    if (!app.$vm) {
+      if (!wx.$onErrorHandlers) {
+        wx.$onErrorHandlers = [];
+      }
+      wx.$onErrorHandlers.push(fromArgs);
+    } else {
+      injectHook(ON_ERROR, fromArgs, app.$vm.$);
+    }
+  }
+};
+const offError = {
+  args(fromArgs) {
+    const app = getApp({ allowDefault: true }) || {};
+    if (!app.$vm) {
+      if (!wx.$onErrorHandlers) {
+        return;
+      }
+      const index2 = wx.$onErrorHandlers.findIndex((fn) => fn === fromArgs);
+      if (index2 !== -1) {
+        wx.$onErrorHandlers.splice(index2, 1);
+      }
+    } else if (fromArgs.__weh) {
+      const onErrors = app.$vm.$[ON_ERROR];
+      if (onErrors) {
+        const index2 = onErrors.indexOf(fromArgs.__weh);
+        if (index2 > -1) {
+          onErrors.splice(index2, 1);
+        }
+      }
+    }
+  }
+};
+const baseApis = {
+  $on,
+  $off,
+  $once,
+  $emit,
+  upx2px,
+  rpx2px: upx2px,
+  interceptors,
+  addInterceptor,
+  removeInterceptor,
+  onCreateVueApp,
+  invokeCreateVueAppHook,
+  getLocale,
+  setLocale,
+  onLocaleChange,
+  getPushClientId,
+  onPushMessage,
+  offPushMessage,
+  invokePushCallback,
+  __f__
+};
+function initUni(api, protocols2, platform = wx) {
+  const wrapper = initWrapper(protocols2);
+  const UniProxyHandlers = {
+    get(target, key) {
+      if (hasOwn(target, key)) {
+        return target[key];
+      }
+      if (hasOwn(api, key)) {
+        return promisify(key, api[key]);
+      }
+      if (hasOwn(baseApis, key)) {
+        return promisify(key, baseApis[key]);
+      }
+      return promisify(key, wrapper(key, platform[key]));
+    }
+  };
+  return new Proxy({}, UniProxyHandlers);
+}
+function initGetProvider(providers) {
+  return function getProvider2({ service, success, fail, complete }) {
+    let res;
+    if (providers[service]) {
+      res = {
+        errMsg: "getProvider:ok",
+        service,
+        provider: providers[service]
+      };
+      isFunction(success) && success(res);
+    } else {
+      res = {
+        errMsg: "getProvider:fail:服务[" + service + "]不存在"
+      };
+      isFunction(fail) && fail(res);
+    }
+    isFunction(complete) && complete(res);
+  };
+}
+const objectKeys = [
+  "qy",
+  "env",
+  "error",
+  "version",
+  "lanDebug",
+  "cloud",
+  "serviceMarket",
+  "router",
+  "worklet",
+  "__webpack_require_UNI_MP_PLUGIN__"
+];
+const singlePageDisableKey = ["lanDebug", "router", "worklet"];
+const launchOption = wx.getLaunchOptionsSync ? wx.getLaunchOptionsSync() : null;
+function isWxKey(key) {
+  if (launchOption && launchOption.scene === 1154 && singlePageDisableKey.includes(key)) {
+    return false;
+  }
+  return objectKeys.indexOf(key) > -1 || typeof wx[key] === "function";
+}
+function initWx() {
+  const newWx = {};
+  for (const key in wx) {
+    if (isWxKey(key)) {
+      newWx[key] = wx[key];
+    }
+  }
+  if (typeof globalThis !== "undefined" && typeof requireMiniProgram === "undefined") {
+    globalThis.wx = newWx;
+  }
+  return newWx;
+}
+const mocks$1 = ["__route__", "__wxExparserNodeId__", "__wxWebviewId__"];
+const getProvider = initGetProvider({
+  oauth: ["weixin"],
+  share: ["weixin"],
+  payment: ["wxpay"],
+  push: ["weixin"]
+});
+function initComponentMocks(component) {
+  const res = /* @__PURE__ */ Object.create(null);
+  mocks$1.forEach((name) => {
+    res[name] = component[name];
+  });
+  return res;
+}
+function createSelectorQuery() {
+  const query = wx$2.createSelectorQuery();
+  const oldIn = query.in;
+  query.in = function newIn(component) {
+    return oldIn.call(this, initComponentMocks(component));
+  };
+  return query;
+}
+const wx$2 = initWx();
+let baseInfo = wx$2.getAppBaseInfo && wx$2.getAppBaseInfo();
+if (!baseInfo) {
+  baseInfo = wx$2.getSystemInfoSync();
+}
+const host = baseInfo ? baseInfo.host : null;
+const shareVideoMessage = host && host.env === "SAAASDK" ? wx$2.miniapp.shareVideoMessage : wx$2.shareVideoMessage;
+var shims = /* @__PURE__ */ Object.freeze({
+  __proto__: null,
+  createSelectorQuery,
+  getProvider,
+  shareVideoMessage
+});
+const compressImage = {
+  args(fromArgs, toArgs) {
+    if (fromArgs.compressedHeight && !toArgs.compressHeight) {
+      toArgs.compressHeight = fromArgs.compressedHeight;
+    }
+    if (fromArgs.compressedWidth && !toArgs.compressWidth) {
+      toArgs.compressWidth = fromArgs.compressedWidth;
+    }
+  }
+};
+var protocols = /* @__PURE__ */ Object.freeze({
+  __proto__: null,
+  compressImage,
+  getAppAuthorizeSetting,
+  getAppBaseInfo,
+  getDeviceInfo,
+  getSystemInfo,
+  getSystemInfoSync,
+  getWindowInfo,
+  offError,
+  onError,
+  previewImage,
+  redirectTo,
+  showActionSheet
+});
+const wx$1 = initWx();
+var index = initUni(shims, protocols, wx$1);
+const CONSOLE_TYPES = ["log", "warn", "error", "info", "debug"];
+let sendConsole = null;
+const messageQueue = [];
+function sendConsoleMessages(messages) {
+  if (sendConsole == null) {
+    messageQueue.push(...messages);
+    return;
+  }
+  sendConsole(JSON.stringify({
+    type: "console",
+    data: messages
+  }));
+}
+function setSendConsole(value) {
+  sendConsole = value;
+  if (value != null && messageQueue.length > 0) {
+    const messages = messageQueue.slice();
+    messageQueue.length = 0;
+    sendConsoleMessages(messages);
+  }
+}
+const originalConsole = /* @__PURE__ */ CONSOLE_TYPES.reduce((methods, type) => {
+  methods[type] = console[type].bind(console);
+  return methods;
+}, {});
+const atFileRegex = /^at\s+[\w/./-]+:\d+$/;
+function rewriteConsole() {
+  function wrapConsole(type) {
+    return function(...args) {
+      const originalArgs = [...args];
+      if (originalArgs.length) {
+        const maybeAtFile = originalArgs[originalArgs.length - 1];
+        if (typeof maybeAtFile === "string" && atFileRegex.test(maybeAtFile)) {
+          originalArgs.pop();
+        }
+      }
+      {
+        originalConsole[type](...originalArgs);
+      }
+      sendConsoleMessages([formatMessage(type, args)]);
+    };
+  }
+  if (isConsoleWritable()) {
+    CONSOLE_TYPES.forEach((type) => {
+      console[type] = wrapConsole(type);
+    });
+    return function restoreConsole() {
+      CONSOLE_TYPES.forEach((type) => {
+        console[type] = originalConsole[type];
+      });
+    };
+  } else {
+    const oldLog = index.__f__;
+    if (oldLog) {
+      index.__f__ = function(...args) {
+        const [type, filename, ...rest] = args;
+        oldLog(type, "", ...rest);
+        sendConsoleMessages([formatMessage(type, [...rest, filename])]);
+      };
+      return function restoreConsole() {
+        index.__f__ = oldLog;
+      };
+    }
+  }
+  return function restoreConsole() {
+  };
+}
+function isConsoleWritable() {
+  const value = console.log;
+  const sym = Symbol();
+  try {
+    console.log = sym;
+  } catch (ex) {
+    return false;
+  }
+  const isWritable = console.log === sym;
+  console.log = value;
+  return isWritable;
+}
+function formatMessage(type, args) {
+  try {
+    return {
+      type,
+      args: formatArgs(args)
+    };
+  } catch (e2) {
+    originalConsole.error(e2);
+  }
+  return {
+    type,
+    args: []
+  };
+}
+function formatArgs(args) {
+  return args.map((arg) => formatArg(arg));
+}
+function formatArg(arg, depth = 0) {
+  if (depth >= 7) {
+    return {
+      type: "object",
+      value: "[Maximum depth reached]"
+    };
+  }
+  return ARG_FORMATTERS[typeof arg](arg, depth);
+}
+function formatObject(value, depth) {
+  if (value === null) {
+    return {
+      type: "null"
+    };
+  }
+  if (isComponentPublicInstance(value)) {
+    return formatComponentPublicInstance(value, depth);
+  }
+  if (isComponentInternalInstance(value)) {
+    return formatComponentInternalInstance(value, depth);
+  }
+  if (isUniElement(value)) {
+    return formatUniElement(value, depth);
+  }
+  if (isCSSStyleDeclaration(value)) {
+    return formatCSSStyleDeclaration(value, depth);
+  }
+  if (Array.isArray(value)) {
+    return {
+      type: "object",
+      subType: "array",
+      value: {
+        properties: value.map((v, i) => formatArrayElement(v, i, depth + 1))
+      }
+    };
+  }
+  if (value instanceof Set) {
+    return {
+      type: "object",
+      subType: "set",
+      className: "Set",
+      description: `Set(${value.size})`,
+      value: {
+        entries: Array.from(value).map((v) => formatSetEntry(v, depth + 1))
+      }
+    };
+  }
+  if (value instanceof Map) {
+    return {
+      type: "object",
+      subType: "map",
+      className: "Map",
+      description: `Map(${value.size})`,
+      value: {
+        entries: Array.from(value.entries()).map((v) => formatMapEntry(v, depth + 1))
+      }
+    };
+  }
+  if (value instanceof Promise) {
+    return {
+      type: "object",
+      subType: "promise",
+      value: {
+        properties: []
+      }
+    };
+  }
+  if (value instanceof RegExp) {
+    return {
+      type: "object",
+      subType: "regexp",
+      value: String(value),
+      className: "Regexp"
+    };
+  }
+  if (value instanceof Date) {
+    return {
+      type: "object",
+      subType: "date",
+      value: String(value),
+      className: "Date"
+    };
+  }
+  if (value instanceof Error) {
+    return {
+      type: "object",
+      subType: "error",
+      value: value.message || String(value),
+      className: value.name || "Error"
+    };
+  }
+  return {
+    type: "object",
+    value: {
+      properties: Object.entries(value).map(([name, value2]) => formatObjectProperty(name, value2, depth + 1))
+    }
+  };
+}
+function isComponentPublicInstance(value) {
+  return value.$ && isComponentInternalInstance(value.$);
+}
+function isComponentInternalInstance(value) {
+  return value.type && value.uid != null && value.appContext;
+}
+function formatComponentPublicInstance(value, depth) {
+  return {
+    type: "object",
+    className: "ComponentPublicInstance",
+    value: {
+      properties: Object.entries(value.$.type).map(([name, value2]) => formatObjectProperty(name, value2, depth + 1))
+    }
+  };
+}
+function formatComponentInternalInstance(value, depth) {
+  return {
+    type: "object",
+    className: "ComponentInternalInstance",
+    value: {
+      properties: Object.entries(value.type).map(([name, value2]) => formatObjectProperty(name, value2, depth + 1))
+    }
+  };
+}
+function isUniElement(value) {
+  return value.style && value.tagName != null && value.nodeName != null;
+}
+function formatUniElement(value, depth) {
+  return {
+    type: "object",
+    // 非 x 没有 UniElement 的概念
+    // className: 'UniElement',
+    value: {
+      properties: Object.entries(value).filter(([name]) => [
+        "id",
+        "tagName",
+        "nodeName",
+        "dataset",
+        "offsetTop",
+        "offsetLeft",
+        "style"
+      ].includes(name)).map(([name, value2]) => formatObjectProperty(name, value2, depth + 1))
+    }
+  };
+}
+function isCSSStyleDeclaration(value) {
+  return typeof value.getPropertyValue === "function" && typeof value.setProperty === "function" && value.$styles;
+}
+function formatCSSStyleDeclaration(style, depth) {
+  return {
+    type: "object",
+    value: {
+      properties: Object.entries(style.$styles).map(([name, value]) => formatObjectProperty(name, value, depth + 1))
+    }
+  };
+}
+function formatObjectProperty(name, value, depth) {
+  return Object.assign(formatArg(value, depth), {
+    name
+  });
+}
+function formatArrayElement(value, index2, depth) {
+  return Object.assign(formatArg(value, depth), {
+    name: `${index2}`
+  });
+}
+function formatSetEntry(value, depth) {
+  return {
+    value: formatArg(value, depth)
+  };
+}
+function formatMapEntry(value, depth) {
+  return {
+    key: formatArg(value[0], depth),
+    value: formatArg(value[1], depth)
+  };
+}
+const ARG_FORMATTERS = {
+  function(value) {
+    return {
+      type: "function",
+      value: `function ${value.name}() {}`
+    };
+  },
+  undefined() {
+    return {
+      type: "undefined"
+    };
+  },
+  object(value, depth) {
+    return formatObject(value, depth);
+  },
+  boolean(value) {
+    return {
+      type: "boolean",
+      value: String(value)
+    };
+  },
+  number(value) {
+    return {
+      type: "number",
+      value: String(value)
+    };
+  },
+  bigint(value) {
+    return {
+      type: "bigint",
+      value: String(value)
+    };
+  },
+  string(value) {
+    return {
+      type: "string",
+      value
+    };
+  },
+  symbol(value) {
+    return {
+      type: "symbol",
+      value: value.description
+    };
+  }
+};
+function initRuntimeSocket(hosts, port, id) {
+  if (!hosts || !port || !id)
+    return Promise.resolve(null);
+  return hosts.split(",").reduce((promise, host2) => {
+    return promise.then((socket) => {
+      if (socket)
+        return socket;
+      return tryConnectSocket(host2, port, id);
+    });
+  }, Promise.resolve(null));
+}
+const SOCKET_TIMEOUT = 500;
+function tryConnectSocket(host2, port, id) {
+  return new Promise((resolve, reject) => {
+    const socket = index.connectSocket({
+      url: `ws://${host2}:${port}/${id}`,
+      // 支付宝小程序 是否开启多实例
+      multiple: true,
+      fail() {
+        resolve(null);
+      }
+    });
+    const timer = setTimeout(() => {
+      socket.close({
+        code: 1006,
+        reason: "connect timeout"
+      });
+      resolve(null);
+    }, SOCKET_TIMEOUT);
+    socket.onOpen((e2) => {
+      clearTimeout(timer);
+      resolve(socket);
+    });
+    socket.onClose((e2) => {
+      clearTimeout(timer);
+      resolve(null);
+    });
+    socket.onError((e2) => {
+      clearTimeout(timer);
+      resolve(null);
+    });
+  });
+}
+let sendError = null;
+const errorQueue = /* @__PURE__ */ new Set();
+function sendErrorMessages(errors) {
+  if (sendError == null) {
+    errors.forEach((error) => {
+      errorQueue.add(error);
+    });
+    return;
+  }
+  sendError(JSON.stringify({
+    type: "error",
+    data: errors.map((err) => {
+      const isPromiseRejection = err && "promise" in err && "reason" in err;
+      const prefix = isPromiseRejection ? "UnhandledPromiseRejection: " : "";
+      if (isPromiseRejection) {
+        err = err.reason;
+      }
+      if (err instanceof Error && err.stack) {
+        return prefix + err.stack;
+      }
+      if (typeof err === "object" && err !== null) {
+        try {
+          return prefix + JSON.stringify(err);
+        } catch (err2) {
+          return prefix + String(err2);
+        }
+      }
+      return prefix + String(err);
+    })
+  }));
+}
+function setSendError(value) {
+  sendError = value;
+  if (value != null && errorQueue.size > 0) {
+    const errors = Array.from(errorQueue);
+    errorQueue.clear();
+    sendErrorMessages(errors);
+  }
+}
+function initOnError() {
+  function onError2(error) {
+    try {
+      if (typeof PromiseRejectionEvent !== "undefined" && error instanceof PromiseRejectionEvent && error.reason instanceof Error && error.reason.message && error.reason.message.includes(`Cannot create property 'errMsg' on string 'taskId`)) {
+        return;
+      }
+      if (true) {
+        originalConsole.error(error);
+      }
+      sendErrorMessages([error]);
+    } catch (err) {
+      originalConsole.error(err);
+    }
+  }
+  if (typeof index.onError === "function") {
+    index.onError(onError2);
+  }
+  if (typeof index.onUnhandledRejection === "function") {
+    index.onUnhandledRejection(onError2);
+  }
+  return function offError2() {
+    if (typeof index.offError === "function") {
+      index.offError(onError2);
+    }
+    if (typeof index.offUnhandledRejection === "function") {
+      index.offUnhandledRejection(onError2);
+    }
+  };
+}
+function initRuntimeSocketService() {
+  const hosts = "192.168.24.1,192.168.241.1,192.168.1.3,127.0.0.1";
+  const port = "8090";
+  const id = "mp-weixin_txN9Zf";
+  const lazy = typeof swan !== "undefined";
+  let restoreError = lazy ? () => {
+  } : initOnError();
+  let restoreConsole = lazy ? () => {
+  } : rewriteConsole();
+  return Promise.resolve().then(() => {
+    if (lazy) {
+      restoreError = initOnError();
+      restoreConsole = rewriteConsole();
+    }
+    return initRuntimeSocket(hosts, port, id).then((socket) => {
+      if (!socket) {
+        restoreError();
+        restoreConsole();
+        originalConsole.error(`开发模式下日志通道建立 socket 连接失败。
+如果是小程序平台，请勾选不校验合法域名配置。
+如果是运行到真机，请确认手机与电脑处于同一网络。`);
+        return false;
+      }
+      socket.onClose(() => {
+        originalConsole.error("开发模式下日志通道 socket 连接关闭，请在 HBuilderX 中重新运行。");
+        restoreError();
+        restoreConsole();
+      });
+      setSendConsole((data) => {
+        socket.send({
+          data
+        });
+      });
+      setSendError((data) => {
+        socket.send({
+          data
+        });
+      });
+      return true;
+    });
+  });
+}
+initRuntimeSocketService();
+function initVueIds(vueIds, mpInstance) {
+  if (!vueIds) {
+    return;
+  }
+  const ids = vueIds.split(",");
+  const len = ids.length;
+  if (len === 1) {
+    mpInstance._$vueId = ids[0];
+  } else if (len === 2) {
+    mpInstance._$vueId = ids[0];
+    mpInstance._$vuePid = ids[1];
+  }
+}
+const EXTRAS = ["externalClasses"];
+function initExtraOptions(miniProgramComponentOptions, vueOptions) {
+  EXTRAS.forEach((name) => {
+    if (hasOwn(vueOptions, name)) {
+      miniProgramComponentOptions[name] = vueOptions[name];
+    }
+  });
+}
+const WORKLET_RE = /_(.*)_worklet_factory_/;
+function initWorkletMethods(mpMethods, vueMethods) {
+  if (vueMethods) {
+    Object.keys(vueMethods).forEach((name) => {
+      const matches = name.match(WORKLET_RE);
+      if (matches) {
+        const workletName = matches[1];
+        mpMethods[name] = vueMethods[name];
+        mpMethods[workletName] = vueMethods[workletName];
+      }
+    });
+  }
+}
+function initWxsCallMethods(methods, wxsCallMethods) {
+  if (!isArray(wxsCallMethods)) {
+    return;
+  }
+  wxsCallMethods.forEach((callMethod) => {
+    methods[callMethod] = function(args) {
+      return this.$vm[callMethod](args);
+    };
+  });
+}
+function selectAllComponents(mpInstance, selector, $refs) {
+  const components = mpInstance.selectAllComponents(selector);
+  components.forEach((component) => {
+    const ref2 = component.properties.uR;
+    $refs[ref2] = component.$vm || component;
+  });
+}
+function initRefs(instance, mpInstance) {
+  Object.defineProperty(instance, "refs", {
+    get() {
+      const $refs = {};
+      selectAllComponents(mpInstance, ".r", $refs);
+      const forComponents = mpInstance.selectAllComponents(".r-i-f");
+      forComponents.forEach((component) => {
+        const ref2 = component.properties.uR;
+        if (!ref2) {
+          return;
+        }
+        if (!$refs[ref2]) {
+          $refs[ref2] = [];
+        }
+        $refs[ref2].push(component.$vm || component);
+      });
+      return $refs;
+    }
+  });
+}
+function findVmByVueId(instance, vuePid) {
+  const $children = instance.$children;
+  for (let i = $children.length - 1; i >= 0; i--) {
+    const childVm = $children[i];
+    if (childVm.$scope._$vueId === vuePid) {
+      return childVm;
+    }
+  }
+  let parentVm;
+  for (let i = $children.length - 1; i >= 0; i--) {
+    parentVm = findVmByVueId($children[i], vuePid);
+    if (parentVm) {
+      return parentVm;
+    }
+  }
+}
 const MP_METHODS = [
   "createSelectorQuery",
   "createIntersectionObserver",
@@ -6780,6 +6996,17 @@ function initBaseInstance(instance, options) {
   ctx.$mpType = options.mpType;
   ctx.$mpPlatform = "mp-weixin";
   ctx.$scope = options.mpInstance;
+  {
+    Object.defineProperties(ctx, {
+      // only id
+      [VIRTUAL_HOST_ID]: {
+        get() {
+          const id = this.$scope.data[VIRTUAL_HOST_ID];
+          return id === void 0 ? "" : id;
+        }
+      }
+    });
+  }
   ctx.$mp = {};
   {
     ctx._self = {};
@@ -6935,7 +7162,7 @@ function parseApp(instance, parseAppOptions) {
     onLaunch(options) {
       this.$vm = instance;
       const ctx = internalInstance.ctx;
-      if (this.$vm && ctx.$scope) {
+      if (this.$vm && ctx.$scope && ctx.$callHook) {
         return;
       }
       initBaseInstance(internalInstance, {
@@ -6947,11 +7174,12 @@ function parseApp(instance, parseAppOptions) {
       instance.$callHook(ON_LAUNCH, options);
     }
   };
-  const { onError } = internalInstance;
-  if (onError) {
-    internalInstance.appContext.config.errorHandler = (err) => {
-      instance.$callHook(ON_ERROR, err);
-    };
+  const onErrorHandlers = wx.$onErrorHandlers;
+  if (onErrorHandlers) {
+    onErrorHandlers.forEach((fn) => {
+      injectHook(ON_ERROR, fn, internalInstance);
+    });
+    onErrorHandlers.length = 0;
   }
   initLocale(instance);
   const vueOptions = instance.$.type;
@@ -6961,19 +7189,16 @@ function parseApp(instance, parseAppOptions) {
     const methods = vueOptions.methods;
     methods && extend(appOptions, methods);
   }
-  if (parseAppOptions) {
-    parseAppOptions.parse(appOptions);
-  }
   return appOptions;
 }
 function initCreateApp(parseAppOptions) {
   return function createApp2(vm) {
-    return App(parseApp(vm, parseAppOptions));
+    return App(parseApp(vm));
   };
 }
 function initCreateSubpackageApp(parseAppOptions) {
   return function createApp2(vm) {
-    const appOptions = parseApp(vm, parseAppOptions);
+    const appOptions = parseApp(vm);
     const app = isFunction(getApp) && getApp({
       allowDefault: true
     });
@@ -7013,7 +7238,9 @@ function initAppLifecycle(appOptions, vm) {
   }
 }
 function initLocale(appVm) {
-  const locale = ref(normalizeLocale(wx.getSystemInfoSync().language) || LOCALE_EN);
+  const locale = ref(
+    normalizeLocale(wx.getAppBaseInfo().language) || LOCALE_EN
+  );
   Object.defineProperty(appVm, "$locale", {
     get() {
       return locale.value;
@@ -7022,93 +7249,6 @@ function initLocale(appVm) {
       locale.value = v;
     }
   });
-}
-function initVueIds(vueIds, mpInstance) {
-  if (!vueIds) {
-    return;
-  }
-  const ids = vueIds.split(",");
-  const len = ids.length;
-  if (len === 1) {
-    mpInstance._$vueId = ids[0];
-  } else if (len === 2) {
-    mpInstance._$vueId = ids[0];
-    mpInstance._$vuePid = ids[1];
-  }
-}
-const EXTRAS = ["externalClasses"];
-function initExtraOptions(miniProgramComponentOptions, vueOptions) {
-  EXTRAS.forEach((name) => {
-    if (hasOwn(vueOptions, name)) {
-      miniProgramComponentOptions[name] = vueOptions[name];
-    }
-  });
-}
-const WORKLET_RE = /_(.*)_worklet_factory_/;
-function initWorkletMethods(mpMethods, vueMethods) {
-  if (vueMethods) {
-    Object.keys(vueMethods).forEach((name) => {
-      const matches = name.match(WORKLET_RE);
-      if (matches) {
-        const workletName = matches[1];
-        mpMethods[name] = vueMethods[name];
-        mpMethods[workletName] = vueMethods[workletName];
-      }
-    });
-  }
-}
-function initWxsCallMethods(methods, wxsCallMethods) {
-  if (!isArray(wxsCallMethods)) {
-    return;
-  }
-  wxsCallMethods.forEach((callMethod) => {
-    methods[callMethod] = function(args) {
-      return this.$vm[callMethod](args);
-    };
-  });
-}
-function selectAllComponents(mpInstance, selector, $refs) {
-  const components = mpInstance.selectAllComponents(selector);
-  components.forEach((component) => {
-    const ref2 = component.properties.uR;
-    $refs[ref2] = component.$vm || component;
-  });
-}
-function initRefs(instance, mpInstance) {
-  Object.defineProperty(instance, "refs", {
-    get() {
-      const $refs = {};
-      selectAllComponents(mpInstance, ".r", $refs);
-      const forComponents = mpInstance.selectAllComponents(".r-i-f");
-      forComponents.forEach((component) => {
-        const ref2 = component.properties.uR;
-        if (!ref2) {
-          return;
-        }
-        if (!$refs[ref2]) {
-          $refs[ref2] = [];
-        }
-        $refs[ref2].push(component.$vm || component);
-      });
-      return $refs;
-    }
-  });
-}
-function findVmByVueId(instance, vuePid) {
-  const $children = instance.$children;
-  for (let i = $children.length - 1; i >= 0; i--) {
-    const childVm = $children[i];
-    if (childVm.$scope._$vueId === vuePid) {
-      return childVm;
-    }
-  }
-  let parentVm;
-  for (let i = $children.length - 1; i >= 0; i--) {
-    parentVm = findVmByVueId($children[i], vuePid);
-    if (parentVm) {
-      return parentVm;
-    }
-  }
 }
 const builtInProps = [
   // 百度小程序,快手小程序自定义组件不支持绑定动态事件，动态dataset，故通过props传递事件信息
@@ -7130,6 +7270,15 @@ const builtInProps = [
 function initDefaultProps(options, isBehavior = false) {
   const properties = {};
   if (!isBehavior) {
+    let observerSlots = function(newVal) {
+      const $slots = /* @__PURE__ */ Object.create(null);
+      newVal && newVal.forEach((slotName) => {
+        $slots[slotName] = true;
+      });
+      this.setData({
+        $slots
+      });
+    };
     builtInProps.forEach((name) => {
       properties[name] = {
         type: null,
@@ -7138,17 +7287,11 @@ function initDefaultProps(options, isBehavior = false) {
     });
     properties.uS = {
       type: null,
-      value: [],
-      observer: function(newVal) {
-        const $slots = /* @__PURE__ */ Object.create(null);
-        newVal && newVal.forEach((slotName) => {
-          $slots[slotName] = true;
-        });
-        this.setData({
-          $slots
-        });
-      }
+      value: []
     };
+    {
+      properties.uS.observer = observerSlots;
+    }
   }
   if (options.behaviors) {
     if (options.behaviors.includes("wx://form-field")) {
@@ -7172,11 +7315,19 @@ function initVirtualHostProps(options) {
   const properties = {};
   {
     if (options && options.virtualHost) {
-      properties.virtualHostStyle = {
+      properties[VIRTUAL_HOST_STYLE] = {
         type: null,
         value: ""
       };
-      properties.virtualHostClass = {
+      properties[VIRTUAL_HOST_CLASS] = {
+        type: null,
+        value: ""
+      };
+      properties[VIRTUAL_HOST_HIDDEN] = {
+        type: null,
+        value: ""
+      };
+      properties[VIRTUAL_HOST_ID] = {
         type: null,
         value: ""
       };
@@ -7232,14 +7383,14 @@ function initPageProps({ properties }, rawProps) {
   }
 }
 function findPropsData(properties, isPage2) {
-  return (isPage2 ? findPagePropsData(properties) : findComponentPropsData(properties.uP)) || {};
+  return (isPage2 ? findPagePropsData(properties) : findComponentPropsData(resolvePropValue(properties.uP))) || {};
 }
 function findPagePropsData(properties) {
   const propsData = {};
   if (isPlainObject(properties)) {
     Object.keys(properties).forEach((name) => {
       if (builtInProps.indexOf(name) === -1) {
-        propsData[name] = properties[name];
+        propsData[name] = resolvePropValue(properties[name]);
       }
     });
   }
@@ -7258,6 +7409,9 @@ function initFormField(vm) {
     });
   }
 }
+function resolvePropValue(prop) {
+  return prop;
+}
 function initData(_) {
   return {};
 }
@@ -7268,9 +7422,9 @@ function initPropsObserver(componentOptions) {
       return;
     }
     if (this.$vm) {
-      updateComponentProps(up, this.$vm.$);
-    } else if (this.properties.uT === "m") {
-      updateMiniProgramComponentProperties(up, this);
+      updateComponentProps(resolvePropValue(up), this.$vm.$);
+    } else if (resolvePropValue(this.properties.uT) === "m") {
+      updateMiniProgramComponentProperties(resolvePropValue(up), this);
     }
   };
   {
@@ -7346,7 +7500,7 @@ function applyOptions(componentOptions, vueOptions) {
   componentOptions.data = initData();
   componentOptions.behaviors = initBehaviors(vueOptions);
 }
-function parseComponent(vueOptions, { parse, mocks: mocks2, isPage: isPage2, initRelation: initRelation2, handleLink: handleLink2, initLifetimes: initLifetimes2 }) {
+function parseComponent(vueOptions, { parse, mocks: mocks2, isPage: isPage2, isPageInProject, initRelation: initRelation2, handleLink: handleLink2, initLifetimes: initLifetimes2 }) {
   vueOptions = vueOptions.default || vueOptions;
   const options = {
     multipleSlots: true,
@@ -7425,6 +7579,7 @@ function parsePage(vueOptions, parseOptions2) {
   const miniProgramPageOptions = parseComponent(vueOptions, {
     mocks: mocks2,
     isPage: isPage2,
+    isPageInProject: true,
     initRelation: initRelation2,
     handleLink: handleLink2,
     initLifetimes: initLifetimes2
@@ -7432,7 +7587,9 @@ function parsePage(vueOptions, parseOptions2) {
   initPageProps(miniProgramPageOptions, (vueOptions.default || vueOptions).props);
   const methods = miniProgramPageOptions.methods;
   methods.onLoad = function(query) {
-    this.options = query;
+    {
+      this.options = query;
+    }
     this.$page = {
       fullPath: addLeadingSlash(this.route + stringifyQuery(query))
     };
@@ -7454,7 +7611,7 @@ function initCreatePage(parseOptions2) {
 }
 function initCreatePluginApp(parseAppOptions) {
   return function createApp2(vm) {
-    initAppLifecycle(parseApp(vm, parseAppOptions), vm);
+    initAppLifecycle(parseApp(vm), vm);
   };
 }
 const MPPage = Page;
@@ -7462,7 +7619,10 @@ const MPComponent = Component;
 function initTriggerEvent(mpInstance) {
   const oldTriggerEvent = mpInstance.triggerEvent;
   const newTriggerEvent = function(event, ...args) {
-    return oldTriggerEvent.apply(mpInstance, [customizeEvent(event), ...args]);
+    return oldTriggerEvent.apply(mpInstance, [
+      customizeEvent(event),
+      ...args
+    ]);
   };
   try {
     mpInstance.triggerEvent = newTriggerEvent;
@@ -7598,3 +7758,4 @@ exports.t = t;
 exports.unref = unref;
 exports.useCssVars = useCssVars;
 exports.wx$1 = wx$1;
+//# sourceMappingURL=../../.sourcemap/mp-weixin/common/vendor.js.map

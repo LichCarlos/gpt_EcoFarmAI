@@ -2,7 +2,6 @@
 const common_vendor = require("../../common/vendor.js");
 const common_assets = require("../../common/assets.js");
 const api_MenuButton = require("../../api/MenuButton.js");
-const appid = "c840c222";
 const _sfc_main = {
   __name: "index",
   setup(__props) {
@@ -52,23 +51,23 @@ const _sfc_main = {
       SocketTask.value = common_vendor.index.connectSocket({
         url: wssUrl.result.url,
         success: (res) => {
-          console.log(res, "ws连接成功");
+          common_vendor.index.__f__("log", "at pages/index/index.vue:121", res, "ws连接成功");
         },
         fail: (err) => {
-          console.log(err, "ws连接失败");
+          common_vendor.index.__f__("log", "at pages/index/index.vue:124", err, "ws连接失败");
           common_vendor.wx$1.showToast({ title: "出现异常", icon: "none" });
           messageData.value = [];
           sendIngState.value = false;
         }
       });
       SocketTask.value.onError((res) => {
-        console.log("错误", res);
+        common_vendor.index.__f__("log", "at pages/index/index.vue:132", "错误", res);
         common_vendor.wx$1.showToast({ title: "出现异常", icon: "none" });
         messageData.value = [];
         sendIngState.value = false;
       });
       SocketTask.value.onOpen((data) => {
-        console.log("成功，可以发送消息了", data);
+        common_vendor.index.__f__("log", "at pages/index/index.vue:139", "成功，可以发送消息了", data);
         historyTestList.value.push({
           "role": "user",
           "content": text.value
@@ -76,8 +75,8 @@ const _sfc_main = {
         text.value = "";
         let parms = {
           "header": {
-            // "app_id": wssUrl.result.APPID
-            "app_id": appid
+            "app_id": wssUrl.result.APPID
+            // "app_id": appid	
           },
           "parameter": {
             "chat": {
@@ -95,10 +94,10 @@ const _sfc_main = {
         SocketTask.value.send({
           data: JSON.stringify(parms),
           success: (res) => {
-            console.log("消息发送成功");
+            common_vendor.index.__f__("log", "at pages/index/index.vue:167", "消息发送成功");
           },
           fail: (err) => {
-            console.log("消息发送失败");
+            common_vendor.index.__f__("log", "at pages/index/index.vue:170", "消息发送失败");
             common_vendor.wx$1.showToast({ title: "出现异常", icon: "none" });
             messageData.value = [];
             sendIngState.value = false;
@@ -111,7 +110,7 @@ const _sfc_main = {
       SocketTask.value.onMessage((res) => {
         messageData.value[messageData.value.length - 1].loadShow = false;
         const obj = JSON.parse(res.data);
-        console.log(obj);
+        common_vendor.index.__f__("log", "at pages/index/index.vue:184", obj);
         if (obj.header.code !== 0) {
           sparResult.value += obj.header.message;
           messageData.value[messageData.value.length - 1].content = sparResult.value;
@@ -215,3 +214,4 @@ const _sfc_main = {
   }
 };
 wx.createPage(_sfc_main);
+//# sourceMappingURL=../../../.sourcemap/mp-weixin/pages/index/index.js.map

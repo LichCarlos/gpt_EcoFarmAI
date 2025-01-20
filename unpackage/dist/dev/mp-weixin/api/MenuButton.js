@@ -18,3 +18,4 @@ const MenuButton = function() {
   };
 };
 exports.MenuButton = MenuButton;
+//# sourceMappingURL=../../.sourcemap/mp-weixin/api/MenuButton.js.map
